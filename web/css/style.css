@@ -430,6 +430,25 @@ button, input, [contenteditable] {
   cursor: pointer;
 }
 
+.item__pdf-preview {
+  width: 100%;
+  height: 400px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+}
+
+.item__video-preview {
+  max-width: 100%;
+  max-height: 400px;
+  border-radius: var(--radius);
+}
+
+.item__audio-preview {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
 .item__actions {
   display: flex;
   gap: 0.5rem;
@@ -828,6 +847,14 @@ button, input, [contenteditable] {
   }
 
   .item__image {
+    max-height: 300px;
+  }
+
+  .item__pdf-preview {
+    height: 300px;
+  }
+
+  .item__video-preview {
     max-height: 300px;
   }
 }

@@ -2,7 +2,7 @@ import { Transport } from './transport.js'
 import { generateKey, encrypt, decryptToString } from './crypto.js'
 import { detectContentKind, setupClipboardHandler, copyToClipboard } from './clipboard.js'
 import { getDeviceLabel } from './device.js'
-import { renderItem, showNotification, updateDeviceList, updateStatusBar, setupDragDrop } from './ui.js'
+import { renderItem, showNotification, updateDeviceList, updateStatusBar, setupDragDrop, completeFileTransfer } from './ui.js'
 import { sendFile, handleFileMeta, handleFileChunk, handleFileComplete } from './stream.js'
 
 // State
@@ -168,7 +168,7 @@ function setupTransport() {
       const ext = (fileInfo.file_name || '').toLowerCase().replace(/.*(\.\w+)$/, '$1')
       const isImage = imageExts.includes(ext)
 
-      renderItem({
+      completeFileTransfer(fileInfo.file_id, {
         kind: isImage ? 'image' : 'file',
         file_name: fileInfo.file_name,
         file_size: fileInfo.file_size,
@@ -215,22 +215,20 @@ function sendTextItem(text) {
   })
 }
 
-function sendFiles(files) {
+async function sendFiles(files) {
   for (const file of files) {
-    if (file.type.startsWith('image/')) {
-      // Read as data URL for local preview
-      const reader = new FileReader()
-      reader.onload = () => {
-        renderItem({
-          kind: 'image',
-          blob_url: URL.createObjectURL(file),
-          device_label: deviceLabel + ' (you)',
-          ts: Date.now()
-        })
-      }
-      reader.readAsDataURL(file)
-    }
-    sendFile(file, encryptionKey, transport, deviceLabel)
+    const fileId = await sendFile(file, encryptionKey, transport, deviceLabel)
+
+    // Upgrade the progress card to show final preview
+    const blobUrl = URL.createObjectURL(file)
+    const isImage = file.type.startsWith('image/')
+    completeFileTransfer(fileId, {
+      kind: isImage ? 'image' : 'file',
+      file_name: file.name,
+      file_size: file.size,
+      blob_url: blobUrl,
+      device_label: deviceLabel + ' (you)'
+    })
   }
 }
 

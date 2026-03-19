@@ -95,7 +95,32 @@ export function renderItem(item) {
       }
       break
     case 'file':
-      content.innerHTML = `<strong>${escapeHtml(item.file_name || 'File')}</strong> <span style="color:var(--text-secondary)">${formatBytes(item.file_size || 0)}</span>`
+      if (isPdfFile(item.file_name) && item.blob_url) {
+        const preview = document.createElement('iframe')
+        preview.className = 'item__pdf-preview'
+        preview.src = item.blob_url
+        preview.title = item.file_name || 'PDF preview'
+        content.appendChild(preview)
+      } else if (isVideoFile(item.file_name) && item.blob_url) {
+        const video = document.createElement('video')
+        video.className = 'item__video-preview'
+        video.src = item.blob_url
+        video.controls = true
+        video.preload = 'metadata'
+        content.appendChild(video)
+      } else if (isAudioFile(item.file_name) && item.blob_url) {
+        const nameEl = document.createElement('div')
+        nameEl.innerHTML = `<strong>${escapeHtml(item.file_name || 'File')}</strong> <span style="color:var(--text-secondary)">${formatBytes(item.file_size || 0)}</span>`
+        content.appendChild(nameEl)
+        const audio = document.createElement('audio')
+        audio.className = 'item__audio-preview'
+        audio.src = item.blob_url
+        audio.controls = true
+        audio.preload = 'metadata'
+        content.appendChild(audio)
+      } else {
+        content.innerHTML = `<strong>${escapeHtml(item.file_name || 'File')}</strong> <span style="color:var(--text-secondary)">${formatBytes(item.file_size || 0)}</span>`
+      }
       break
     default:
       content.innerHTML = renderTextContent(item.text || '')
@@ -176,9 +201,13 @@ export function renderFileProgress(fileId, fileName, fileSize, progress) {
     card.className = 'item'
     card.dataset.fileId = fileId
     card.dataset.kind = 'file'
+
+    const isImage = isImageFile(fileName)
+    const kindLabel = isImage ? 'image' : 'file'
+
     card.innerHTML = `
       <div class="item__header">
-        <span class="item__kind">file</span>
+        <span class="item__kind">${kindLabel}</span>
         <span class="item__meta"></span>
       </div>
       <div class="item__content">
@@ -198,6 +227,122 @@ export function renderFileProgress(fileId, fileName, fileSize, progress) {
   if (text) text.textContent = `${Math.round(progress * 100)}%`
 
   if (autoScroll) feed.scrollTop = feed.scrollHeight
+}
+
+export function completeFileTransfer(fileId, item) {
+  const card = feed.querySelector(`[data-file-id="${fileId}"]`)
+  if (!card) {
+    // No progress card found, fall back to rendering a new item
+    renderItem(item)
+    return
+  }
+
+  // Determine the final kind
+  const finalKind = item.kind || 'file'
+  card.dataset.kind = finalKind
+
+  // Rebuild the card content in-place
+  card.innerHTML = ''
+
+  // Header
+  const header = document.createElement('div')
+  header.className = 'item__header'
+  const kindEl = document.createElement('span')
+  kindEl.className = 'item__kind'
+  kindEl.textContent = finalKind
+  const meta = document.createElement('span')
+  meta.className = 'item__meta'
+  meta.textContent = item.device_label || ''
+  header.appendChild(kindEl)
+  header.appendChild(meta)
+  card.appendChild(header)
+
+  // Content
+  const content = document.createElement('div')
+  content.className = 'item__content'
+
+  if (finalKind === 'image' && item.blob_url) {
+    const img = document.createElement('img')
+    img.className = 'item__image'
+    img.src = item.blob_url
+    img.alt = item.file_name || 'Shared image'
+    content.appendChild(img)
+  } else if (isPdfFile(item.file_name) && item.blob_url) {
+    const preview = document.createElement('iframe')
+    preview.className = 'item__pdf-preview'
+    preview.src = item.blob_url
+    preview.title = item.file_name || 'PDF preview'
+    content.appendChild(preview)
+  } else if (isVideoFile(item.file_name) && item.blob_url) {
+    const video = document.createElement('video')
+    video.className = 'item__video-preview'
+    video.src = item.blob_url
+    video.controls = true
+    video.preload = 'metadata'
+    content.appendChild(video)
+  } else if (isAudioFile(item.file_name) && item.blob_url) {
+    const nameEl = document.createElement('div')
+    nameEl.innerHTML = `<strong>${escapeHtml(item.file_name || 'File')}</strong> <span style="color:var(--text-secondary)">${formatBytes(item.file_size || 0)}</span>`
+    content.appendChild(nameEl)
+    const audio = document.createElement('audio')
+    audio.className = 'item__audio-preview'
+    audio.src = item.blob_url
+    audio.controls = true
+    audio.preload = 'metadata'
+    content.appendChild(audio)
+  } else {
+    content.innerHTML = `<strong>${escapeHtml(item.file_name || 'File')}</strong> <span style="color:var(--text-secondary)">${formatBytes(item.file_size || 0)}</span>`
+  }
+
+  card.appendChild(content)
+
+  // Actions — always show download for files/images with blob_url
+  const actions = document.createElement('div')
+  actions.className = 'item__actions'
+
+  if (item.blob_url) {
+    const dlBtn = document.createElement('button')
+    dlBtn.className = 'btn btn--primary btn--small'
+    dlBtn.textContent = 'Download'
+    dlBtn.addEventListener('click', () => {
+      const a = document.createElement('a')
+      a.href = item.blob_url
+      a.download = item.file_name || 'download'
+      a.click()
+    })
+    actions.appendChild(dlBtn)
+  }
+
+  card.appendChild(actions)
+
+  // Respect active filter
+  if (activeFilter !== 'all' && card.dataset.kind !== activeFilter) {
+    card.style.display = 'none'
+  } else {
+    card.style.display = ''
+  }
+
+  if (autoScroll) feed.scrollTop = feed.scrollHeight
+}
+
+function isImageFile(name) {
+  if (!name) return false
+  return /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i.test(name)
+}
+
+function isPdfFile(name) {
+  if (!name) return false
+  return /\.pdf$/i.test(name)
+}
+
+function isVideoFile(name) {
+  if (!name) return false
+  return /\.(mp4|webm|mov|avi|mkv)$/i.test(name)
+}
+
+function isAudioFile(name) {
+  if (!name) return false
+  return /\.(mp3|wav|ogg|m4a|flac|aac)$/i.test(name)
 }
 
 export function showDropOverlay() {

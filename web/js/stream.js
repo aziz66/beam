@@ -60,6 +60,8 @@ export async function sendFile(file, key, transport, deviceLabel) {
     payload: { file_id: fileId },
     ts: Date.now()
   })
+
+  return fileId
 }
 
 export function handleFileMeta(payload, key) {
