@@ -126,12 +126,9 @@ func (a *API) deleteRoom(w http.ResponseWriter, r *http.Request, code string) {
 		return
 	}
 
-	// Pinned rooms require passphrase — accept via X-Passphrase header or query param
+	// Pinned rooms require passphrase — accept via X-Passphrase header only
 	if rm.Pinned && rm.Passphrase != "" {
 		passphrase := r.Header.Get("X-Passphrase")
-		if passphrase == "" {
-			passphrase = r.URL.Query().Get("passphrase")
-		}
 		if passphrase == "" {
 			writeError(w, http.StatusUnauthorized, "passphrase required for pinned rooms")
 			return

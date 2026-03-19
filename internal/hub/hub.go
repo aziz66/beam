@@ -3,10 +3,13 @@ package hub
 import (
 	"encoding/json"
 	"log"
+	"math"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -20,13 +23,23 @@ var roomCodeRe = regexp.MustCompile(`^[a-z]+-[a-z]+-\d{2,3}$`)
 const (
 	maxMessageSize = 10 * 1024 * 1024 // 10MB
 	pongWait       = 60 * time.Second
+	rateMsgPerSec  = 30.0 // token refill rate
+	rateBurst      = 60.0 // initial token bucket size
 )
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // allow all origins for now
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true // non-browser clients (CLI)
+		}
+		u, err := url.Parse(origin)
+		if err != nil {
+			return false
+		}
+		return u.Host == r.Host
 	},
 }
 
@@ -126,6 +139,10 @@ func (h *Hub) handleConnection(conn *websocket.Conn, deviceID, roomCode string) 
 func (h *Hub) readPump(conn *websocket.Conn, client *room.Client, rm *room.Room) {
 	defer conn.Close()
 
+	// Token bucket rate limiter (per-connection, single goroutine — no mutex needed)
+	tokens := rateBurst
+	lastRefill := time.Now()
+
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
@@ -134,6 +151,16 @@ func (h *Hub) readPump(conn *websocket.Conn, client *room.Client, rm *room.Room)
 			}
 			return
 		}
+
+		// Refill tokens
+		now := time.Now()
+		tokens = math.Min(rateBurst, tokens+now.Sub(lastRefill).Seconds()*rateMsgPerSec)
+		lastRefill = now
+		if tokens < 1 {
+			log.Printf("rate limit exceeded: device=%s, dropping message", client.DeviceID)
+			continue
+		}
+		tokens--
 
 		var env protocol.Envelope
 		if err := json.Unmarshal(message, &env); err != nil {
@@ -156,7 +183,7 @@ func (h *Hub) routeMessage(env *protocol.Envelope, raw []byte, sender *room.Clie
 			return
 		}
 		if payload.DeviceLabel != "" {
-			label := payload.DeviceLabel
+			label := sanitizeLabel(payload.DeviceLabel)
 			if len(label) > maxDeviceLabelLen {
 				label = label[:maxDeviceLabelLen]
 			}
@@ -280,6 +307,16 @@ func (h *Hub) sendJoined(client *room.Client, roomCode, deviceID string) {
 	case client.Send <- data:
 	default:
 	}
+}
+
+func sanitizeLabel(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if !unicode.IsControl(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func (h *Hub) sendError(conn *websocket.Conn, code, message string) {

@@ -2,6 +2,7 @@ const RECONNECT_BASE = 1000
 const RECONNECT_MAX = 30000
 const PING_INTERVAL = 25000
 const PONG_TIMEOUT = 10000
+const CONNECT_TIMEOUT = 5000 // watchdog: give up on CONNECTING after this long
 
 export class Transport {
   constructor() {
@@ -13,6 +14,7 @@ export class Transport {
     this.reconnectTimer = null
     this.pingTimer = null
     this.pongTimer = null
+    this.watchdogTimer = null
     this.state = 'disconnected'
     this.intentionalClose = false
   }
@@ -23,44 +25,88 @@ export class Transport {
     this.intentionalClose = false
     this._connect()
 
-    // iOS Safari: when a page is loaded in the background (e.g. tapping a QR link
-    // while another app is open), Safari runs scripts immediately but suspends all
-    // network activity. The WebSocket gets stuck in CONNECTING state indefinitely.
-    // When the page becomes visible, force a fresh connection if the socket is not
-    // already OPEN — this handles CONNECTING, CLOSING, and CLOSED states.
-    const onVisible = () => {
-      if (document.visibilityState !== 'visible' || this.intentionalClose) return
+    // iOS Safari may load the page in the background and suspend network activity
+    // before the WebSocket handshake completes. The socket gets stuck in CONNECTING
+    // state indefinitely — onclose/onerror never fire, so auto-retry never kicks in.
+    //
+    // We register multiple events to catch every way iOS can bring a page to the
+    // foreground, and force a fresh connection whenever we detect we're visible
+    // but not connected.
+    const forceReconnect = () => {
+      if (!this.url || this.intentionalClose) return
       if (this.ws && this.ws.readyState === WebSocket.OPEN) return
       clearTimeout(this.reconnectTimer)
+      clearTimeout(this.watchdogTimer)
       this.reconnectDelay = RECONNECT_BASE
       if (this.ws) {
+        this.ws.onopen = null
         this.ws.onclose = null
         this.ws.onerror = null
+        this.ws.onmessage = null
         this.ws.close()
         this.ws = null
       }
       this._connect()
     }
 
-    document.addEventListener('visibilitychange', onVisible)
+    // visibilitychange: page moved to foreground
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') forceReconnect()
+    })
 
-    // pageshow fires on bfcache restore (Safari back/forward navigation) where
-    // visibilitychange does not fire. e.persisted === true means page came from cache.
+    // focus: window/tab received focus (complements visibilitychange on some iOS versions)
+    window.addEventListener('focus', forceReconnect)
+
+    // pageshow with persisted=true: Safari restored page from bfcache (back/forward),
+    // visibilitychange does NOT fire in this case
     window.addEventListener('pageshow', (e) => {
-      if (e.persisted) onVisible()
+      if (e.persisted) forceReconnect()
     })
   }
 
   _connect() {
     if (this.ws) {
+      this.ws.onopen = null
       this.ws.onclose = null
+      this.ws.onerror = null
+      this.ws.onmessage = null
       this.ws.close()
     }
 
-    this.ws = new WebSocket(this.url)
+    try {
+      this.ws = new WebSocket(this.url)
+    } catch (err) {
+      // Invalid URL or browser blocked the connection entirely
+      this.state = 'reconnecting'
+      this._emit('reconnecting')
+      this._scheduleReconnect()
+      return
+    }
+
     this.state = 'connecting'
 
+    // Watchdog: if the socket is still CONNECTING after CONNECT_TIMEOUT ms,
+    // something (iOS network suspension, a silent browser block, etc.) has frozen
+    // the handshake. Abandon it and try again from scratch.
+    clearTimeout(this.watchdogTimer)
+    this.watchdogTimer = setTimeout(() => {
+      if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
+        this.ws.onopen = null
+        this.ws.onclose = null
+        this.ws.onerror = null
+        this.ws.onmessage = null
+        this.ws.close()
+        this.ws = null
+        if (!this.intentionalClose) {
+          this.state = 'reconnecting'
+          this._emit('reconnecting')
+          this._scheduleReconnect()
+        }
+      }
+    }, CONNECT_TIMEOUT)
+
     this.ws.onopen = () => {
+      clearTimeout(this.watchdogTimer)
       this.state = 'connected'
       this.reconnectDelay = RECONNECT_BASE
       this._emit('connected')
@@ -86,6 +132,7 @@ export class Transport {
     }
 
     this.ws.onclose = () => {
+      clearTimeout(this.watchdogTimer)
       this._stopPing()
       if (this.intentionalClose) {
         this.state = 'disconnected'
@@ -98,7 +145,7 @@ export class Transport {
     }
 
     this.ws.onerror = () => {
-      // onclose will fire after this
+      // onclose will fire after this — watchdog covers the case where it doesn't
     }
   }
 
@@ -119,6 +166,7 @@ export class Transport {
     this.intentionalClose = true
     this._stopPing()
     clearTimeout(this.reconnectTimer)
+    clearTimeout(this.watchdogTimer)
     if (this.ws) this.ws.close()
   }
 
@@ -142,7 +190,6 @@ export class Transport {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.send({ type: 'ping', payload: null, ts: Date.now() })
         this.pongTimer = setTimeout(() => {
-          // No pong received, reconnect
           if (this.ws) this.ws.close()
         }, PONG_TIMEOUT)
       }

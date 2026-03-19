@@ -2,6 +2,7 @@ import { encrypt, decrypt, encryptBytes } from './crypto.js'
 import { renderFileProgress } from './ui.js'
 
 const CHUNK_SIZE = 64 * 1024 // 64KB
+const TRANSFER_TIMEOUT = 5 * 60 * 1000 // 5 minutes
 
 // Active transfers: fileId -> { chunks[], meta, received }
 const incomingTransfers = new Map()
@@ -78,6 +79,11 @@ export function handleFileMeta(payload, key) {
     chunks: new Array(payload.total_chunks),
     received: 0
   })
+
+  // Auto-clean abandoned transfers (sender disconnected before sending file_complete)
+  setTimeout(() => {
+    incomingTransfers.delete(payload.file_id)
+  }, TRANSFER_TIMEOUT)
 
   renderFileProgress(payload.file_id, fileName, payload.size, 0)
 }
