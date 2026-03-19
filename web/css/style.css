@@ -278,6 +278,7 @@ button, input, [contenteditable] {
   background: var(--accent-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  cursor: pointer;
   background-clip: text;
   cursor: pointer;
   padding: 0.25rem 0.75rem;
@@ -300,14 +301,6 @@ button, input, [contenteditable] {
   opacity: 1;
 }
 
-.landing__link {
-  font-size: 0.8rem;
-  color: var(--text-tertiary);
-  word-break: break-all;
-  text-align: center;
-  line-height: 1.5;
-  max-width: 100%;
-}
 
 .landing__divider {
   display: flex;

@@ -18,7 +18,6 @@ const transport = new Transport()
 const landingView = document.getElementById('landing-view')
 const roomView = document.getElementById('room-view')
 const roomCodeEl = document.getElementById('room-code')
-const roomLinkEl = document.getElementById('room-link')
 const headerRoomCode = document.getElementById('header-room-code')
 const joinInput = document.getElementById('join-input')
 const joinBtn = document.getElementById('join-btn')
@@ -65,7 +64,6 @@ function showLanding() {
 
   const link = buildRoomLink()
   roomCodeEl.textContent = roomCode
-  roomLinkEl.textContent = link
 
   renderQR(link)
 
@@ -235,6 +233,11 @@ async function sendFiles(files) {
 }
 
 // Event listeners
+roomCodeEl.addEventListener('click', async () => {
+  const ok = await copyToClipboard(buildRoomLink())
+  if (ok) showNotification('Link copied!', 'success')
+})
+
 copyLinkBtn.addEventListener('click', async () => {
   const ok = await copyToClipboard(buildRoomLink())
   if (ok) showNotification('Link copied!', 'success')
