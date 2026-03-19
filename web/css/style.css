@@ -662,10 +662,6 @@ button, input, [contenteditable] {
   gap: 0.5rem;
 }
 
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-8px); }
-}
 
 /* --- Item Cards --- */
 
@@ -687,13 +683,11 @@ button, input, [contenteditable] {
 }
 
 .item--mine {
-  align-self: flex-end;
   border-right: 3px solid var(--accent);
   background: linear-gradient(135deg, var(--bg-card-solid), var(--accent-light));
 }
 
 .item--peer {
-  align-self: flex-start;
   border-left: 3px solid var(--success);
   background: linear-gradient(135deg, var(--success-light), var(--bg-card-solid));
 }
@@ -808,16 +802,14 @@ button, input, [contenteditable] {
 .item-wrapper {
   display: flex;
   flex-direction: column;
-  max-width: 520px;
+  width: 100%;
 }
 
 .item-wrapper--mine {
-  align-self: flex-end;
   align-items: flex-end;
 }
 
 .item-wrapper--peer {
-  align-self: flex-start;
   align-items: flex-start;
 }
 
@@ -1333,7 +1325,7 @@ button, input, [contenteditable] {
   }
 
   .item {
-    max-width: 92%;
+    max-width: 80%;
   }
 
   .item__image {

@@ -176,7 +176,7 @@ export function renderItem(item) {
     actions.appendChild(openBtn)
   }
 
-  if ((item.kind === 'file' || item.kind === 'image' || item.kind === 'media') && item.blob_url) {
+  if ((item.kind === 'file' || item.kind === 'image') && item.blob_url) {
     const dlBtn = document.createElement('button')
     dlBtn.className = 'item__action-btn'
     dlBtn.title = 'Download'
