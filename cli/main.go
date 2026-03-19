@@ -203,18 +203,27 @@ func cmdReceive() {
 			fmt.Println()
 
 			outPath := filepath.Join(*outDir, ft.name)
+			// Verify all chunks arrived before writing
+			allChunks := true
+			for i := 0; i < ft.totalChunks; i++ {
+				if _, ok := ft.chunks[i]; !ok {
+					fmt.Printf("  missing chunk %d — file incomplete, skipping\n", i)
+					allChunks = false
+					break
+				}
+			}
+			if !allChunks {
+				delete(transfers, payload.FileID)
+				continue
+			}
 			f, err := os.Create(outPath)
 			if err != nil {
 				fmt.Printf("  error creating file: %v\n", err)
+				delete(transfers, payload.FileID)
 				continue
 			}
 			for i := 0; i < ft.totalChunks; i++ {
-				chunk, ok := ft.chunks[i]
-				if !ok {
-					fmt.Printf("  missing chunk %d\n", i)
-					break
-				}
-				f.Write(chunk)
+				f.Write(ft.chunks[i])
 			}
 			f.Close()
 			delete(transfers, payload.FileID)
@@ -245,8 +254,15 @@ func cmdNew() {
 	keyB64 := base64.StdEncoding.EncodeToString(keyBytes)
 
 	// Create room via API
-	body := fmt.Sprintf(`{"pinned":%v,"passphrase":"%s"}`, *pinned, *passphrase)
-	resp, err := http.Post(*server+"/api/rooms", "application/json", strings.NewReader(body))
+	type createReq struct {
+		Pinned     bool   `json:"pinned"`
+		Passphrase string `json:"passphrase,omitempty"`
+	}
+	bodyBytes, err := json.Marshal(createReq{Pinned: *pinned, Passphrase: *passphrase})
+	if err != nil {
+		log.Fatalf("marshaling request: %v", err)
+	}
+	resp, err := http.Post(*server+"/api/rooms", "application/json", strings.NewReader(string(bodyBytes)))
 	if err != nil {
 		log.Fatalf("creating room: %v", err)
 	}

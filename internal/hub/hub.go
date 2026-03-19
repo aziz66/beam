@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -13,6 +14,8 @@ import (
 	"github.com/beam-sh/beam/internal/protocol"
 	"github.com/beam-sh/beam/internal/room"
 )
+
+var roomCodeRe = regexp.MustCompile(`^[a-z]+-[a-z]+-\d{2,3}$`)
 
 const (
 	maxMessageSize = 10 * 1024 * 1024 // 10MB
@@ -27,20 +30,23 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+const maxDeviceLabelLen = 64
+
 type Hub struct {
-	manager *room.Manager
+	manager     *room.Manager
+	gracePeriod time.Duration
 }
 
-func New(manager *room.Manager) *Hub {
-	return &Hub{manager: manager}
+func New(manager *room.Manager, gracePeriod time.Duration) *Hub {
+	return &Hub{manager: manager, gracePeriod: gracePeriod}
 }
 
 func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 	// Extract room code from URL path: /ws/{roomCode}
 	path := strings.TrimPrefix(r.URL.Path, "/ws/")
 	roomCode := strings.TrimSuffix(path, "/")
-	if roomCode == "" {
-		http.Error(w, "room code required", http.StatusBadRequest)
+	if roomCode == "" || !roomCodeRe.MatchString(roomCode) {
+		http.Error(w, "invalid room code", http.StatusBadRequest)
 		return
 	}
 
@@ -109,7 +115,7 @@ func (h *Hub) handleConnection(conn *websocket.Conn, deviceID, roomCode string) 
 	h.broadcastDeviceList(rm)
 
 	if rm.IsEmpty() && !rm.Pinned {
-		rm.StartGraceTimer(5*time.Minute, func() {
+		rm.StartGraceTimer(h.gracePeriod, func() {
 			if rm.IsEmpty() {
 				h.manager.DeleteRoom(roomCode)
 			}
@@ -150,7 +156,11 @@ func (h *Hub) routeMessage(env *protocol.Envelope, raw []byte, sender *room.Clie
 			return
 		}
 		if payload.DeviceLabel != "" {
-			sender.DeviceLabel = payload.DeviceLabel
+			label := payload.DeviceLabel
+			if len(label) > maxDeviceLabelLen {
+				label = label[:maxDeviceLabelLen]
+			}
+			sender.DeviceLabel = label
 			h.broadcastDeviceList(rm)
 		}
 

@@ -125,7 +125,10 @@ func (p *Previewer) Fetch(rawURL string) (*Result, error) {
 	// Cache result
 	p.mu.Lock()
 	if len(p.cache) >= maxCacheSize {
-		p.evictOldest()
+		p.evictExpired()
+		if len(p.cache) >= maxCacheSize {
+			p.evictOldest()
+		}
 	}
 	p.cache[rawURL] = &cacheEntry{
 		result:    result,
@@ -134,6 +137,15 @@ func (p *Previewer) Fetch(rawURL string) (*Result, error) {
 	p.mu.Unlock()
 
 	return result, nil
+}
+
+func (p *Previewer) evictExpired() {
+	now := time.Now()
+	for key, entry := range p.cache {
+		if !now.Before(entry.expiresAt) {
+			delete(p.cache, key)
+		}
+	}
 }
 
 func (p *Previewer) evictOldest() {

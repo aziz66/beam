@@ -74,12 +74,14 @@ function showLanding() {
 }
 
 function generateClientCode() {
-  // Simple client-side code generator (server will create room on WS connect)
+  // Use crypto.getRandomValues for unpredictable room codes
   const adj = ['amber', 'azure', 'bold', 'calm', 'coral', 'crisp', 'dawn', 'deep', 'fair', 'fresh', 'frost', 'gentle', 'golden', 'jade', 'keen', 'light', 'lunar', 'mist', 'noble', 'opal', 'pine', 'quick', 'rose', 'sage', 'silk', 'snow', 'swift', 'teal', 'warm', 'wild']
   const noun = ['anchor', 'birch', 'brook', 'cedar', 'cloud', 'crane', 'delta', 'eagle', 'fern', 'flame', 'grove', 'hawk', 'lake', 'maple', 'moon', 'oak', 'peak', 'rain', 'reef', 'river', 'sage', 'shell', 'star', 'stone', 'storm', 'tiger', 'trail', 'wave', 'wind', 'wolf']
-  const a = adj[Math.floor(Math.random() * adj.length)]
-  const n = noun[Math.floor(Math.random() * noun.length)]
-  const num = Math.floor(Math.random() * 90) + 10
+  const rnd = new Uint32Array(3)
+  crypto.getRandomValues(rnd)
+  const a = adj[rnd[0] % adj.length]
+  const n = noun[rnd[1] % noun.length]
+  const num = 10 + (rnd[2] % 90)
   return `${a}-${n}-${num}`
 }
 

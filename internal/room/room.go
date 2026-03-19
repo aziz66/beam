@@ -35,6 +35,7 @@ type Client struct {
 	Send        chan []byte
 	JoinedAt    time.Time
 	mu          sync.Mutex
+	closeOnce   sync.Once
 }
 
 type StoredItem struct {
@@ -219,13 +220,14 @@ func (c *Client) WritePump() {
 }
 
 func (c *Client) Close() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	select {
-	case <-c.Send:
-	default:
+	c.closeOnce.Do(func() {
 		close(c.Send)
-	}
+	})
 	c.Conn.Close()
+}
+
+func (r *Room) HasGraceTimer() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.graceTimer != nil
 }

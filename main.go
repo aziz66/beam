@@ -48,7 +48,7 @@ func main() {
 	defer manager.Close()
 
 	// Initialize hub
-	h := hub.New(manager)
+	h := hub.New(manager, cfg.GracePeriod)
 
 	// Initialize API
 	previewer := preview.New()

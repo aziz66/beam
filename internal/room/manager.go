@@ -179,8 +179,8 @@ func (m *Manager) cleanup() {
 	}
 	m.mu.RUnlock()
 
-	var toDelete []string
 	for _, code := range codes {
+		code := code // shadow loop variable for closure capture
 		m.mu.RLock()
 		r, exists := m.rooms[code]
 		m.mu.RUnlock()
@@ -190,16 +190,13 @@ func (m *Manager) cleanup() {
 
 		r.CleanExpiredItems()
 
-		if r.IsEmpty() && !r.Pinned {
+		// Only start a grace timer if one isn't already running (hub may have started one)
+		if r.IsEmpty() && !r.Pinned && !r.HasGraceTimer() {
 			r.StartGraceTimer(m.config.GracePeriod, func() {
 				if r.IsEmpty() {
-					toDelete = append(toDelete, code)
+					m.DeleteRoom(code)
 				}
 			})
 		}
-	}
-
-	for _, code := range toDelete {
-		m.DeleteRoom(code)
 	}
 }

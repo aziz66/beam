@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/beam-sh/beam/internal/preview"
 	"github.com/beam-sh/beam/internal/protocol"
 	"github.com/beam-sh/beam/internal/room"
@@ -124,14 +126,20 @@ func (a *API) deleteRoom(w http.ResponseWriter, r *http.Request, code string) {
 		return
 	}
 
-	// Pinned rooms require passphrase
+	// Pinned rooms require passphrase — accept via X-Passphrase header or query param
 	if rm.Pinned && rm.Passphrase != "" {
-		passphrase := r.URL.Query().Get("passphrase")
+		passphrase := r.Header.Get("X-Passphrase")
+		if passphrase == "" {
+			passphrase = r.URL.Query().Get("passphrase")
+		}
 		if passphrase == "" {
 			writeError(w, http.StatusUnauthorized, "passphrase required for pinned rooms")
 			return
 		}
-		// Passphrase verification would use bcrypt here
+		if err := bcrypt.CompareHashAndPassword([]byte(rm.Passphrase), []byte(passphrase)); err != nil {
+			writeError(w, http.StatusUnauthorized, "invalid passphrase")
+			return
+		}
 	}
 
 	a.manager.DeleteRoom(code)

@@ -1,4 +1,4 @@
-const URL_PATTERN = /^https?:\/\/\S+$/i
+const URL_PATTERN = /^https?:\/\/[^\s<>"'`{}|\\^[\]]+$/i
 const CODE_HINTS = /[{};()=>\[\]]/
 
 export function detectContentKind(text) {
