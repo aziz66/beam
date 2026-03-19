@@ -268,7 +268,7 @@ export function completeFileTransfer(fileId, item) {
     img.src = item.blob_url
     img.alt = item.file_name || 'Shared image'
     content.appendChild(img)
-  } else if (isPdfFile(item.file_name) && item.blob_url) {
+  } else if (isPdfFile(item.file_name) && item.blob_url && !isIOS) {
     const preview = document.createElement('iframe')
     preview.className = 'item__pdf-preview'
     preview.src = item.blob_url
