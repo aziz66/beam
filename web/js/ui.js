@@ -8,6 +8,7 @@ const toastContainer = document.getElementById('toast-container')
 
 let autoScroll = true
 let activeFilter = 'all'
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 
 // Filter bar logic
 document.querySelectorAll('.room__filter').forEach(btn => {
@@ -95,7 +96,7 @@ export function renderItem(item) {
       }
       break
     case 'file':
-      if (isPdfFile(item.file_name) && item.blob_url) {
+      if (isPdfFile(item.file_name) && item.blob_url && !isIOS) {
         const preview = document.createElement('iframe')
         preview.className = 'item__pdf-preview'
         preview.src = item.blob_url
