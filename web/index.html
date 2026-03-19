@@ -15,6 +15,7 @@
 <body>
   <!-- Landing View -->
   <div id="landing-view" class="view landing">
+    <button id="landing-theme-btn" class="btn btn--secondary btn--icon landing__theme-btn" title="Toggle theme"></button>
     <div class="landing__logo">Beam</div>
     <p class="landing__subtitle">Encrypted ephemeral sharing between any devices. No install, no accounts.</p>
 
@@ -33,6 +34,16 @@
       <div class="landing__join">
         <input id="join-input" class="input" type="text" placeholder="Enter room code...">
         <button id="join-btn" class="btn btn--primary">Join</button>
+      </div>
+
+      <div class="landing__pin">
+        <label class="landing__pin-label">
+          <input type="checkbox" id="pin-toggle" class="landing__pin-checkbox">
+          <span>Pin this room</span>
+        </label>
+        <div id="pin-passphrase-wrap" class="landing__pin-passphrase" style="display:none">
+          <input id="pin-passphrase" class="input input--sm" type="password" placeholder="Passphrase (optional)">
+        </div>
       </div>
     </div>
 
@@ -92,6 +103,7 @@
             <rect x="11" y="11" width="3" height="3" rx="0.5"/>
           </svg>
         </button>
+        <button id="room-theme-btn" class="btn btn--secondary btn--icon btn--small" title="Toggle theme"></button>
         <button id="header-settings-btn" class="btn btn--secondary btn--icon btn--small" title="Settings">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
             <circle cx="8" cy="8" r="2.5"/>

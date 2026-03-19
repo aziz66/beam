@@ -86,6 +86,57 @@
   }
 }
 
+/* Manual theme overrides — higher specificity than the media query */
+:root[data-theme="light"] {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #f1f5f9;
+  --bg-card: rgba(255, 255, 255, 0.72);
+  --bg-card-solid: #ffffff;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-tertiary: #94a3b8;
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
+  --accent-light: rgba(99, 102, 241, 0.12);
+  --accent-glow: rgba(99, 102, 241, 0.35);
+  --accent-gradient: linear-gradient(135deg, #6366f1, #8b5cf6, #a78bfa);
+  --border: rgba(148, 163, 184, 0.25);
+  --border-light: rgba(148, 163, 184, 0.12);
+  --glass-border: rgba(255, 255, 255, 0.18);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.1);
+  --shadow-glow: 0 0 40px rgba(99, 102, 241, 0.15);
+  --orb-1: rgba(99, 102, 241, 0.20);
+  --orb-2: rgba(139, 92, 246, 0.18);
+  --orb-3: rgba(16, 185, 129, 0.15);
+}
+
+:root[data-theme="dark"] {
+  --bg-primary: #0c0f1a;
+  --bg-secondary: #111827;
+  --bg-card: rgba(30, 32, 54, 0.65);
+  --bg-card-solid: #1a1d2e;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
+  --accent: #818cf8;
+  --accent-hover: #a5b4fc;
+  --accent-light: rgba(129, 140, 248, 0.15);
+  --accent-glow: rgba(129, 140, 248, 0.25);
+  --accent-gradient: linear-gradient(135deg, #818cf8, #a78bfa, #c4b5fd);
+  --border: rgba(148, 163, 184, 0.12);
+  --border-light: rgba(148, 163, 184, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.35);
+  --shadow-glow: 0 0 40px rgba(129, 140, 248, 0.12);
+  --orb-1: rgba(99, 102, 241, 0.12);
+  --orb-2: rgba(139, 92, 246, 0.10);
+  --orb-3: rgba(16, 185, 129, 0.08);
+}
+
 /* ========================================
    Reset & Base
    ======================================== */
@@ -1377,4 +1428,59 @@ button, input, [contenteditable] {
   .item {
     padding: 0.75rem 1rem;
   }
+}
+
+/* ========================================
+   Theme Toggle Button
+   ======================================== */
+
+.landing__theme-btn {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  z-index: 10;
+}
+
+/* ========================================
+   Pin Room
+   ======================================== */
+
+.landing__pin {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.875rem 1rem;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.landing__pin-label {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.landing__pin-label:hover {
+  color: var(--text-primary);
+}
+
+.landing__pin-checkbox {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.input--sm {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
 }

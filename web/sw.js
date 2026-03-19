@@ -1,4 +1,4 @@
-const CACHE_NAME = 'beam-v6'
+const CACHE_NAME = 'beam-v7'
 const SHELL_ASSETS = [
   '/',
   '/css/style.css?v=999',
@@ -16,7 +16,9 @@ const SHELL_ASSETS = [
   '/lib/tweetnacl-util.min.js',
   '/lib/qrcode.min.js',
   '/favicon.svg',
-  '/manifest.json'
+  '/manifest.json',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png'
 ]
 
 self.addEventListener('install', (event) => {
