@@ -2,7 +2,7 @@
 
 **Encrypted ephemeral sharing between any devices.**
 
-No install on the receiving end. No accounts. No persistence by default. The server is a blind relay that only sees encrypted blobs.
+No install on the receiving end. No accounts. No persistence by default. The server is a blind relay that only ever sees encrypted blobs.
 
 ## Why Beam?
 
@@ -13,7 +13,7 @@ No install on the receiving end. No accounts. No persistence by default. The ser
 
 ## Quick Start
 
-### Docker
+### Docker (recommended)
 
 ```bash
 docker run -p 8080:8080 ghcr.io/aziz66/beam
@@ -22,7 +22,7 @@ docker run -p 8080:8080 ghcr.io/aziz66/beam
 ### Binary
 
 ```bash
-# Download from releases, then:
+# Download from Releases, then:
 ./beam --port 8080
 ```
 
@@ -35,15 +35,15 @@ go build -ldflags "-s -w" -o beam .
 ./beam
 ```
 
-Open `http://localhost:8080` — you'll get a room with a QR code and link. Open that link on any other device to start sharing.
+Open `http://localhost:8080` — you get a room with a QR code and shareable link. Open that link on any other device to start sharing instantly.
 
 ## How It Works
 
 1. Visit the server — a room is created with a unique code like `coral-tiger-88`
 2. An encryption key is generated in your browser and placed in the URL fragment (`#key`)
-3. Share the link (QR code, copy, etc.) — the `#key` part **never leaves the browser**
+3. Share the link (QR code, copy button, etc.) — the `#key` part **never leaves the browser**
 4. Drop files, paste text, share links — everything is encrypted before leaving your device
-5. The server relays encrypted blobs between devices. It cannot read your data.
+5. The server relays encrypted blobs. It cannot read your data.
 
 ```
 https://your-server.com/r/coral-tiger-88#E2EKeyHere
@@ -52,12 +52,14 @@ https://your-server.com/r/coral-tiger-88#E2EKeyHere
 
 ## Features
 
-- **Text & clipboard** — paste text, links, code snippets
-- **File streaming** — drag-and-drop files, streamed in 64KB encrypted chunks
+- **Text & clipboard** — paste text, links, code snippets; auto-detects content kind
+- **File streaming** — drag-and-drop or attach files, streamed in 64 KB encrypted chunks with live progress
+- **Feed filters** — filter the shared feed by type: Text, Links, Code, Media, Files
 - **Link previews** — OG tag extraction for shared URLs
+- **Tap to copy / download** — tap any text/code bubble to copy; tap any file/image to download
 - **P2P upgrade** — WebRTC direct connection for 2-device rooms on LAN
-- **Pinned rooms** — persistent rooms with optional passphrase protection
-- **PWA** — installable on mobile, share target support on Android
+- **Pinned rooms** — persistent rooms with optional passphrase protection (bcrypt)
+- **PWA** — installable on mobile, share-target support on Android/iOS
 - **CLI client** — `beam send`, `beam receive`, `beam new`
 - **Desktop agent** — Tauri tray app for clipboard auto-sync
 - **Dark/light theme** — follows system preference
@@ -74,11 +76,68 @@ All settings can be set via flags or `BEAM_*` environment variables.
 | `--default-ttl` | `BEAM_DEFAULT_TTL` | `30m` | Default item TTL |
 | `--max-file-buffer` | `BEAM_MAX_FILE_BUFFER` | `268435456` | Max file buffer (bytes) |
 | `--enable-pinned-rooms` | `BEAM_ENABLE_PINNED_ROOMS` | `true` | Allow pinned rooms |
-| `--data-dir` | `BEAM_DATA_DIR` | `./data` | Data directory |
+| `--data-dir` | `BEAM_DATA_DIR` | `./data` | Data directory for pinned rooms |
 | `--tls-cert` | `BEAM_TLS_CERT` | | TLS certificate path |
 | `--tls-key` | `BEAM_TLS_KEY` | | TLS key path |
-| `--grace-period` | `BEAM_GRACE_PERIOD` | `5m` | Room grace period |
+| `--grace-period` | `BEAM_GRACE_PERIOD` | `5m` | Room grace period after last disconnect |
 | `--max-rooms` | `BEAM_MAX_ROOMS` | `1000` | Max concurrent rooms |
+
+## Self-Hosting
+
+> **TLS is required for production.** The encryption key lives in the URL fragment — over plain HTTP it is visible in browser history and to any network observer. Use HTTPS.
+
+### Direct TLS
+
+```bash
+./beam --tls-cert /path/to/cert.pem --tls-key /path/to/key.pem --port 443
+```
+
+### Behind Caddy (automatic HTTPS)
+
+```
+beam.example.com {
+    reverse_proxy localhost:8080
+}
+```
+
+### Behind Nginx
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name beam.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/beam.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/beam.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+### Docker Compose
+
+```yaml
+services:
+  beam:
+    image: ghcr.io/aziz66/beam:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - beam-data:/app/data
+    environment:
+      - BEAM_MAX_ROOMS=500
+    restart: unless-stopped
+
+volumes:
+  beam-data:
+```
 
 ## API
 
@@ -89,7 +148,7 @@ curl http://localhost:8080/api/health
 # Create a room
 curl -X POST http://localhost:8080/api/rooms
 
-# Create a pinned room
+# Create a pinned room with passphrase
 curl -X POST http://localhost:8080/api/rooms \
   -H "Content-Type: application/json" \
   -d '{"pinned": true, "passphrase": "secret"}'
@@ -97,7 +156,11 @@ curl -X POST http://localhost:8080/api/rooms \
 # Get room info
 curl http://localhost:8080/api/rooms/coral-tiger-88
 
-# Send an item (encrypted client-side)
+# Delete a pinned room (passphrase via header)
+curl -X DELETE http://localhost:8080/api/rooms/coral-tiger-88 \
+  -H "X-Passphrase: secret"
+
+# Send an item
 curl -X POST http://localhost:8080/api/rooms/coral-tiger-88/items \
   -H "Content-Type: application/json" \
   -d '{"kind": "text", "encrypted_data": "...", "nonce": "..."}'
@@ -124,86 +187,39 @@ beam receive --room coral-tiger-88 --key <base64key>
 
 Build the CLI: `go build -o beam-cli ./cli/`
 
-## Self-Hosting
-
-### With TLS (recommended)
-
-```bash
-./beam --tls-cert /path/to/cert.pem --tls-key /path/to/key.pem --port 443
-```
-
-### Behind Nginx
-
-```nginx
-server {
-    listen 443 ssl;
-    server_name beam.example.com;
-
-    ssl_certificate /etc/letsencrypt/live/beam.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/beam.example.com/privkey.pem;
-
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
-
-### Behind Caddy
-
-```
-beam.example.com {
-    reverse_proxy localhost:8080
-}
-```
-
-### Docker Compose
-
-```yaml
-services:
-  beam:
-    image: ghcr.io/aziz66/beam:latest
-    ports:
-      - "8080:8080"
-    volumes:
-      - beam-data:/app/data
-    restart: unless-stopped
-
-volumes:
-  beam-data:
-```
-
 ## Security
 
-- All content is encrypted client-side using **TweetNaCl** (secretbox: XSalsa20-Poly1305)
-- The encryption key lives in the URL fragment (`#key`) which **browsers never send to servers**
-- The server only sees encrypted blobs, room codes, and device IDs
-- Pinned room passphrases are hashed with **bcrypt** (cost 12)
-- Link preview endpoint has **SSRF protection** (blocks private IP ranges)
-- All randomness uses `crypto/rand` (Go) or `crypto.getRandomValues` (browser)
+- **E2E encryption** — TweetNaCl secretbox (XSalsa20-Poly1305) with a fresh random 24-byte nonce per message
+- **Key never leaves the browser** — lives in the URL fragment (`#key`), which browsers never send to servers
+- **Blind relay** — the server only sees encrypted blobs, room codes, and device IDs
+- **Passphrase hashing** — pinned room passphrases stored as bcrypt (cost 12)
+- **SSRF protection** — link preview endpoint blocks private IP ranges and redirect chains to private IPs
+- **Security headers** — CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy on all responses
+- **WebSocket rate limiting** — token bucket (30 msg/s, burst 60) per connection
+- **CORS enforcement** — WebSocket connections restricted to same-origin host
+- **Non-root container** — Docker image runs as a dedicated `beam` user
 
 ## Architecture
 
 ```
 beam/
-├── main.go                  # Entry point, HTTP routing, go:embed
+├── main.go                  # Entry point, HTTP routing, go:embed, security headers
 ├── internal/
-│   ├── config/              # Configuration (flags + env vars)
-│   ├── hub/                 # WebSocket connection manager
-│   ├── room/                # Room lifecycle, BadgerDB store
-│   ├── relay/               # Message forwarding
-│   ├── signaling/           # WebRTC SDP/ICE relay
+│   ├── config/              # Configuration (flags + BEAM_* env vars)
+│   ├── hub/                 # WebSocket upgrade, read pump, rate limiting
+│   ├── room/                # Room lifecycle, item storage, BadgerDB store
+│   ├── relay/               # Message broadcast / targeted forwarding
+│   ├── signaling/           # WebRTC SDP/ICE relay (stateless passthrough)
 │   ├── api/                 # REST API handlers
-│   ├── preview/             # Link OG-tag fetcher
-│   ├── protocol/            # Wire protocol message types
-│   └── namegen/             # Room code generator
+│   ├── preview/             # Link OG-tag fetcher with LRU cache + SSRF guard
+│   ├── protocol/            # Wire protocol message types (JSON envelopes)
+│   └── namegen/             # Room code generator (adjective-noun-NN)
 ├── web/                     # Frontend (embedded via go:embed)
+│   ├── js/                  # Vanilla ES modules — no framework, no bundler
+│   ├── css/                 # BEM-style CSS, dark/light via prefers-color-scheme
+│   └── lib/                 # Vendored: TweetNaCl.js, QRCode.js
 ├── cli/                     # CLI client
-└── agent/                   # Desktop tray agent (Tauri)
+└── agent/                   # Desktop tray agent (Tauri/Rust)
 ```
 
 ## License

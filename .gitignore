@@ -1,8 +1,45 @@
-beam
-beam.exe
-beam-cli
-beam-cli.exe
+# Binaries
+/beam
+/beam.exe
+/beam-cli
+/beam-cli.exe
+
+# Build output
 dist/
+
+# Runtime data
 data/
 *.db
+
+# TLS certificates — never commit private keys
+*.pem
+*.key
+*.crt
+*.cert
+
+# Environment files
+.env
+.env.*
+
+# Logs
+*.log
+
+# OS metadata
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Go test cache and coverage
+*.test
+*.out
+coverage.html
+
+# Tauri / Rust build artifacts
 agent/src-tauri/target/
+agent/target/
