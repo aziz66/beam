@@ -1,4 +1,4 @@
-const CACHE_NAME = 'beam-v3'
+const CACHE_NAME = 'beam-v4'
 const SHELL_ASSETS = [
   '/',
   '/css/style.css?v=999',
@@ -11,6 +11,7 @@ const SHELL_ASSETS = [
   '/js/preview.js',
   '/js/device.js',
   '/js/webrtc.js',
+  '/js/pdf-thumbnail.js',
   '/lib/tweetnacl.min.js',
   '/lib/tweetnacl-util.min.js',
   '/lib/qrcode.min.js',

@@ -22,6 +22,18 @@ export class Transport {
     this.url = `${proto}//${location.host}/ws/${roomCode}`
     this.intentionalClose = false
     this._connect()
+
+    // iOS Safari closes WebSocket when the page is backgrounded during initial load
+    // (e.g. when following a link from QR scanner). Reconnect when page becomes visible.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && !this.intentionalClose) {
+        if (!this.ws || this.ws.readyState === WebSocket.CLOSED || this.ws.readyState === WebSocket.CLOSING) {
+          clearTimeout(this.reconnectTimer)
+          this.reconnectDelay = RECONNECT_BASE
+          this._connect()
+        }
+      }
+    })
   }
 
   _connect() {
