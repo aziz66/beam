@@ -254,6 +254,15 @@ button, input, [contenteditable] {
   min-width: 0;
 }
 
+.room__logo {
+  font-weight: 700;
+  font-size: 1.1rem;
+  background: linear-gradient(135deg, var(--accent), var(--success));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
 .room__code {
   font-family: var(--font-mono);
   font-weight: 600;
