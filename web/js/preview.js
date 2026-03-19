@@ -55,7 +55,7 @@ export function renderTextContent(text, maxLength = 500) {
 
 export function renderLinkPreview(url) {
   const el = document.createElement('div')
-  el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="item__content--link">${escapeHtml(url)}</a>`
+  el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="item__content--link">${escapeHtml(url)}</a>`
 
   // Try to fetch OG preview
   fetch(`/api/preview?url=${encodeURIComponent(url)}`)
@@ -67,7 +67,7 @@ export function renderLinkPreview(url) {
       const card = document.createElement('a')
       card.href = url
       card.target = '_blank'
-      card.rel = 'noopener'
+      card.rel = 'noopener noreferrer'
       card.className = 'link-preview'
 
       if (data.image) {

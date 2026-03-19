@@ -122,6 +122,14 @@ func (p *Previewer) Fetch(rawURL string) (*Result, error) {
 		result.Description = extractMeta(html, "description")
 	}
 
+	// Resolve relative image URLs to absolute using the page URL as base
+	if result.Image != "" {
+		imgParsed, err := url.Parse(result.Image)
+		if err == nil && !imgParsed.IsAbs() {
+			result.Image = parsed.ResolveReference(imgParsed).String()
+		}
+	}
+
 	// Cache result
 	p.mu.Lock()
 	if len(p.cache) >= maxCacheSize {

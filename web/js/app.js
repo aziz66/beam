@@ -322,6 +322,15 @@ inputField.addEventListener('keydown', (e) => {
   }
 })
 
+// Force plain-text paste in the input field so that URLs copied from browsers
+// (which Chrome packages as rich HTML with the page title as link text) arrive
+// as the raw URL string rather than the rendered title.
+inputField.addEventListener('paste', (e) => {
+  e.preventDefault()
+  const text = e.clipboardData.getData('text/plain')
+  if (text) document.execCommand('insertText', false, text)
+})
+
 attachBtn.addEventListener('click', () => fileInput.click())
 fileInput.addEventListener('change', () => {
   const files = Array.from(fileInput.files)
