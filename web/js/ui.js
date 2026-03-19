@@ -7,6 +7,47 @@ const dropOverlay = document.getElementById('drop-overlay')
 const toastContainer = document.getElementById('toast-container')
 
 let autoScroll = true
+let activeFilter = 'all'
+
+// Filter bar logic
+document.querySelectorAll('.room__filter').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const filter = btn.dataset.filter
+    if (filter === activeFilter) {
+      activeFilter = 'all'
+    } else {
+      activeFilter = filter
+    }
+    document.querySelectorAll('.room__filter').forEach(b => b.classList.remove('room__filter--active'))
+    const activeBtn = document.querySelector(`.room__filter[data-filter="${activeFilter}"]`)
+    if (activeBtn) activeBtn.classList.add('room__filter--active')
+    applyFilter()
+  })
+})
+
+function applyFilter() {
+  const items = feed.querySelectorAll('.item[data-kind]')
+  let visibleCount = 0
+  items.forEach(item => {
+    if (activeFilter === 'all' || item.dataset.kind === activeFilter) {
+      item.style.display = ''
+      visibleCount++
+    } else {
+      item.style.display = 'none'
+    }
+  })
+  // Show empty message only if there are items but none match the filter
+  const totalItems = items.length + feed.querySelectorAll('.item:not([data-kind])').length
+  if (totalItems > 0 && visibleCount === 0) {
+    feedEmpty.style.display = ''
+    feedEmpty.textContent = 'No items match this filter'
+  } else if (totalItems > 0) {
+    feedEmpty.style.display = 'none'
+  } else {
+    feedEmpty.style.display = ''
+    feedEmpty.textContent = 'Drop files or paste anything to share'
+  }
+}
 
 export function renderItem(item) {
   feedEmpty.style.display = 'none'
@@ -14,6 +55,7 @@ export function renderItem(item) {
   const card = document.createElement('div')
   card.className = 'item'
   card.dataset.itemId = item.item_id || ''
+  card.dataset.kind = item.kind || 'text'
 
   const header = document.createElement('div')
   header.className = 'item__header'
@@ -113,6 +155,12 @@ export function renderItem(item) {
   }
 
   card.appendChild(actions)
+
+  // Hide if it doesn't match the active filter
+  if (activeFilter !== 'all' && card.dataset.kind !== activeFilter) {
+    card.style.display = 'none'
+  }
+
   feed.appendChild(card)
 
   if (autoScroll) {
@@ -127,6 +175,7 @@ export function renderFileProgress(fileId, fileName, fileSize, progress) {
     card = document.createElement('div')
     card.className = 'item'
     card.dataset.fileId = fileId
+    card.dataset.kind = 'file'
     card.innerHTML = `
       <div class="item__header">
         <span class="item__kind">file</span>
