@@ -375,6 +375,18 @@ button, input, [contenteditable] {
   padding: 1rem;
   box-shadow: var(--shadow);
   animation: item-enter 200ms ease;
+  max-width: 85%;
+}
+
+.item--mine {
+  align-self: flex-end;
+  border-color: var(--accent);
+  border-left: 3px solid var(--accent);
+}
+
+.item--peer {
+  align-self: flex-start;
+  border-left: 3px solid var(--success);
 }
 
 @keyframes item-enter {

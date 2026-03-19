@@ -54,8 +54,10 @@ function applyFilter() {
 export function renderItem(item) {
   feedEmpty.style.display = 'none'
 
+  const isMine = (item.device_label || '').endsWith('(you)')
+
   const card = document.createElement('div')
-  card.className = 'item'
+  card.className = 'item' + (isMine ? ' item--mine' : ' item--peer')
   card.dataset.itemId = item.item_id || ''
   card.dataset.kind = item.kind || 'text'
 
@@ -245,6 +247,9 @@ export function completeFileTransfer(fileId, item) {
   // Determine the final kind
   const finalKind = item.kind || 'file'
   card.dataset.kind = finalKind
+
+  const isMine = (item.device_label || '').endsWith('(you)')
+  card.className = 'item' + (isMine ? ' item--mine' : ' item--peer')
 
   // Rebuild the card content in-place
   card.innerHTML = ''
