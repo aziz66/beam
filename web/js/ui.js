@@ -102,10 +102,10 @@ export function renderItem(item) {
       break
     case 'file':
       if (isPdfFile(item.file_name) && item.blob_url && !isIOS) {
-        const preview = document.createElement('iframe')
+        const preview = document.createElement('embed')
         preview.className = 'item__pdf-preview'
         preview.src = item.blob_url
-        preview.title = item.file_name || 'PDF preview'
+        preview.type = 'application/pdf'
         content.appendChild(preview)
       } else if (isPdfFile(item.file_name) && item.blob_url && isIOS) {
         content.innerHTML = `<strong>${escapeHtml(item.file_name || 'File')}</strong> <span style="color:var(--text-secondary)">${formatBytes(item.file_size || 0)}</span>`
@@ -306,10 +306,10 @@ export function completeFileTransfer(fileId, item) {
     img.alt = item.file_name || 'Shared image'
     content.appendChild(img)
   } else if (isPdfFile(item.file_name) && item.blob_url && !isIOS) {
-    const preview = document.createElement('iframe')
+    const preview = document.createElement('embed')
     preview.className = 'item__pdf-preview'
     preview.src = item.blob_url
-    preview.title = item.file_name || 'PDF preview'
+    preview.type = 'application/pdf'
     content.appendChild(preview)
   } else if (isPdfFile(item.file_name) && item.blob_url && isIOS) {
     content.innerHTML = `<strong>${escapeHtml(item.file_name || 'File')}</strong> <span style="color:var(--text-secondary)">${formatBytes(item.file_size || 0)}</span>`

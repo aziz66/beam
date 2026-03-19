@@ -795,12 +795,15 @@ button, input, [contenteditable] {
 }
 
 .item__video-preview {
-  max-width: 100%;
+  display: block;
+  width: 100%;
   max-height: 360px;
+  min-height: 80px;
   border-radius: var(--radius);
 }
 
 .item__audio-preview {
+  display: block;
   width: 100%;
   margin-top: 0.5rem;
 }
@@ -1346,6 +1349,7 @@ button, input, [contenteditable] {
 
   .item__video-preview {
     max-height: 300px;
+    min-height: 60px;
   }
 }
 
