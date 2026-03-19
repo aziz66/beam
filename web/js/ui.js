@@ -1,5 +1,6 @@
 import { formatTimeAgo, formatBytes, renderTextContent, renderLinkPreview, highlightCode, detectLanguage } from './preview.js'
 import { copyToClipboard } from './clipboard.js'
+import { renderPdfThumbnail } from './pdf-thumbnail.js'
 
 const feed = document.getElementById('feed')
 const feedEmpty = document.getElementById('feed-empty')
@@ -102,6 +103,9 @@ export function renderItem(item) {
         preview.src = item.blob_url
         preview.title = item.file_name || 'PDF preview'
         content.appendChild(preview)
+      } else if (isPdfFile(item.file_name) && item.blob_url && isIOS) {
+        content.innerHTML = `<strong>${escapeHtml(item.file_name || 'File')}</strong> <span style="color:var(--text-secondary)">${formatBytes(item.file_size || 0)}</span>`
+        renderPdfThumbnailInto(content, item.blob_url, item.file_name)
       } else if (isVideoFile(item.file_name) && item.blob_url) {
         const video = document.createElement('video')
         video.className = 'item__video-preview'
@@ -274,6 +278,9 @@ export function completeFileTransfer(fileId, item) {
     preview.src = item.blob_url
     preview.title = item.file_name || 'PDF preview'
     content.appendChild(preview)
+  } else if (isPdfFile(item.file_name) && item.blob_url && isIOS) {
+    content.innerHTML = `<strong>${escapeHtml(item.file_name || 'File')}</strong> <span style="color:var(--text-secondary)">${formatBytes(item.file_size || 0)}</span>`
+    renderPdfThumbnailInto(content, item.blob_url, item.file_name)
   } else if (isVideoFile(item.file_name) && item.blob_url) {
     const video = document.createElement('video')
     video.className = 'item__video-preview'
@@ -324,6 +331,17 @@ export function completeFileTransfer(fileId, item) {
   }
 
   if (autoScroll) feed.scrollTop = feed.scrollHeight
+}
+
+async function renderPdfThumbnailInto(container, blobUrl, fileName) {
+  const thumbUrl = await renderPdfThumbnail(blobUrl)
+  if (thumbUrl) {
+    const img = document.createElement('img')
+    img.className = 'item__image item__pdf-thumb'
+    img.src = thumbUrl
+    img.alt = fileName || 'PDF page 1'
+    container.appendChild(img)
+  }
 }
 
 function isImageFile(name) {
