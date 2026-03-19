@@ -106,7 +106,7 @@ export function renderItem(item) {
     dlBtn.addEventListener('click', () => {
       const a = document.createElement('a')
       a.href = item.blob_url
-      a.download = 'image.png'
+      a.download = item.file_name || 'image.png'
       a.click()
     })
     actions.appendChild(dlBtn)

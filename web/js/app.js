@@ -25,6 +25,9 @@ const joinBtn = document.getElementById('join-btn')
 const copyLinkBtn = document.getElementById('copy-link-btn')
 const openRoomBtn = document.getElementById('open-room-btn')
 const headerCopyBtn = document.getElementById('header-copy-btn')
+const headerQrBtn = document.getElementById('header-qr-btn')
+const qrModal = document.getElementById('qr-modal')
+const qrModalCloseBtn = document.getElementById('qr-modal-close-btn')
 const headerSettingsBtn = document.getElementById('header-settings-btn')
 const settingsModal = document.getElementById('settings-modal')
 const settingsCloseBtn = document.getElementById('settings-close-btn')
@@ -161,8 +164,12 @@ function setupTransport() {
 
   transport.on('file_complete', (env) => {
     handleFileComplete(env.payload, (fileInfo) => {
+      const imageExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']
+      const ext = (fileInfo.file_name || '').toLowerCase().replace(/.*(\.\w+)$/, '$1')
+      const isImage = imageExts.includes(ext)
+
       renderItem({
-        kind: 'file',
+        kind: isImage ? 'image' : 'file',
         file_name: fileInfo.file_name,
         file_size: fileInfo.file_size,
         blob_url: fileInfo.blob_url,
@@ -265,6 +272,17 @@ headerRoomCode.addEventListener('click', async () => {
   if (ok) showNotification('Link copied!', 'success')
 })
 
+headerQrBtn.addEventListener('click', () => {
+  const link = buildRoomLink()
+  renderQR(link, document.getElementById('qr-modal-canvas'))
+  document.getElementById('qr-modal-link').textContent = link
+  qrModal.classList.add('modal-backdrop--active')
+})
+
+qrModalCloseBtn.addEventListener('click', () => {
+  qrModal.classList.remove('modal-backdrop--active')
+})
+
 headerSettingsBtn.addEventListener('click', () => {
   settingsDeviceLabel.value = deviceLabel
   settingsModal.classList.add('modal-backdrop--active')
@@ -324,14 +342,14 @@ setupDragDrop((files) => {
 })
 
 // QR code rendering
-function renderQR(text) {
-  const canvas = document.getElementById('qr-canvas')
+function renderQR(text, targetCanvas) {
+  const canvas = targetCanvas || document.getElementById('qr-canvas')
   if (typeof qrcode === 'undefined') return
   try {
     const qr = qrcode(0, 'M')
     qr.addData(text)
     qr.make()
-    const size = 180
+    const size = window.innerWidth <= 640 ? 140 : 180
     const modules = qr.getModuleCount()
     const cellSize = size / modules
     const ctx = canvas.getContext('2d')

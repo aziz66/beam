@@ -62,11 +62,45 @@ export function renderLinkPreview(url) {
     .then(r => r.ok ? r.json() : null)
     .then(data => {
       if (!data || !data.title) return
-      el.innerHTML = `
-        <a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="item__content--link" style="display:block;text-decoration:none;">
-          <strong>${escapeHtml(data.title)}</strong>
-          ${data.description ? `<br><span style="color:var(--text-secondary);font-size:0.85rem">${escapeHtml(data.description)}</span>` : ''}
-        </a>`
+      el.innerHTML = ''
+
+      const card = document.createElement('a')
+      card.href = url
+      card.target = '_blank'
+      card.rel = 'noopener'
+      card.className = 'link-preview'
+
+      if (data.image) {
+        const img = document.createElement('img')
+        img.className = 'link-preview__image'
+        img.src = data.image
+        img.alt = data.title || ''
+        img.onerror = () => img.remove()
+        card.appendChild(img)
+      }
+
+      const body = document.createElement('div')
+      body.className = 'link-preview__body'
+
+      const title = document.createElement('div')
+      title.className = 'link-preview__title'
+      title.textContent = data.title
+      body.appendChild(title)
+
+      if (data.description) {
+        const desc = document.createElement('div')
+        desc.className = 'link-preview__description'
+        desc.textContent = data.description
+        body.appendChild(desc)
+      }
+
+      const domain = document.createElement('div')
+      domain.className = 'link-preview__domain'
+      try { domain.textContent = new URL(url).hostname } catch { domain.textContent = url }
+      body.appendChild(domain)
+
+      card.appendChild(body)
+      el.appendChild(card)
     })
     .catch(() => {})
 
