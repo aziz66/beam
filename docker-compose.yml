@@ -1,0 +1,14 @@
+services:
+  beam:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - beam-data:/app/data
+    environment:
+      - BEAM_PORT=8080
+      - BEAM_ENABLE_PINNED_ROOMS=true
+    restart: unless-stopped
+
+volumes:
+  beam-data:

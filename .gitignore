@@ -1,0 +1,8 @@
+beam
+beam.exe
+beam-cli
+beam-cli.exe
+dist/
+data/
+*.db
+agent/src-tauri/target/

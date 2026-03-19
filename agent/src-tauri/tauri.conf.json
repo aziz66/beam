@@ -1,0 +1,33 @@
+{
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
+    "devPath": "../src",
+    "distDir": "../src"
+  },
+  "package": {
+    "productName": "Beam Agent",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "bundle": {
+      "active": true,
+      "identifier": "sh.beam.agent",
+      "icon": [
+        "icons/icon.png"
+      ]
+    },
+    "systemTray": {
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": true
+    },
+    "windows": [],
+    "allowlist": {
+      "all": false,
+      "clipboard": {
+        "writeText": true,
+        "readText": true
+      }
+    }
+  }
+}

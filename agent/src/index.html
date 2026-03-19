@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Beam Agent Settings</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #e4e4e7;
+      padding: 1.5rem;
+      min-height: 100vh;
+    }
+    h1 { font-size: 1.2rem; margin-bottom: 1.5rem; }
+    .field { margin-bottom: 1rem; }
+    .field label {
+      display: block;
+      font-size: 0.8rem;
+      color: #a1a1aa;
+      margin-bottom: 0.25rem;
+    }
+    .field input {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid #2e2e4a;
+      border-radius: 6px;
+      background: #1e1e3a;
+      color: #e4e4e7;
+      font-size: 0.9rem;
+    }
+    .field input:focus { border-color: #0071e3; outline: none; }
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .toggle input[type="checkbox"] { width: 18px; height: 18px; }
+    button {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      background: #0071e3;
+      color: white;
+    }
+    button:hover { background: #0077ED; }
+    .status {
+      margin-top: 1.5rem;
+      padding: 0.75rem;
+      border-radius: 6px;
+      background: #1e1e3a;
+      font-size: 0.85rem;
+    }
+    .status-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-right: 0.5rem;
+    }
+    .status-dot--connected { background: #34c759; }
+    .status-dot--disconnected { background: #6e6e73; }
+  </style>
+</head>
+<body>
+  <h1>Beam Agent</h1>
+
+  <div class="field">
+    <label>Server URL</label>
+    <input id="server-url" type="text" value="http://localhost:8080" />
+  </div>
+
+  <div class="field">
+    <label>Room Code</label>
+    <input id="room-code" type="text" placeholder="e.g. coral-tiger-88" />
+  </div>
+
+  <div class="field">
+    <label>Encryption Key</label>
+    <input id="encryption-key" type="password" placeholder="Base64 key from room link" />
+  </div>
+
+  <div class="toggle">
+    <input id="auto-sync" type="checkbox" checked />
+    <label for="auto-sync">Auto-sync clipboard</label>
+  </div>
+
+  <button id="connect-btn">Connect</button>
+
+  <div class="status">
+    <span class="status-dot status-dot--disconnected" id="status-dot"></span>
+    <span id="status-text">Disconnected</span>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>

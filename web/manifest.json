@@ -1,0 +1,28 @@
+{
+  "name": "Beam",
+  "short_name": "Beam",
+  "description": "Encrypted ephemeral sharing between any devices",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#0071e3",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "file",
+          "accept": ["*/*"]
+        }
+      ]
+    }
+  }
+}
