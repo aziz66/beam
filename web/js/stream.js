@@ -117,7 +117,8 @@ export function handleFileComplete(payload, onComplete) {
     }
   }
 
-  const blob = new Blob([combined])
+  const mimeType = getMimeFromName(transfer.fileName)
+  const blob = new Blob([combined], mimeType ? { type: mimeType } : undefined)
   const blobUrl = URL.createObjectURL(blob)
 
   incomingTransfers.delete(payload.file_id)
@@ -130,4 +131,44 @@ export function handleFileComplete(payload, onComplete) {
       blob_url: blobUrl
     })
   }
+}
+
+const MIME_MAP = {
+  pdf: 'application/pdf',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+  bmp: 'image/bmp',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+  avi: 'video/x-msvideo',
+  mkv: 'video/x-matroska',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  m4a: 'audio/mp4',
+  flac: 'audio/flac',
+  aac: 'audio/aac',
+  txt: 'text/plain',
+  html: 'text/html',
+  css: 'text/css',
+  js: 'text/javascript',
+  json: 'application/json',
+  zip: 'application/zip',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+}
+
+function getMimeFromName(name) {
+  if (!name) return null
+  const ext = name.toLowerCase().replace(/.*\.(\w+)$/, '$1')
+  return MIME_MAP[ext] || null
 }
