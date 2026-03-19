@@ -23,16 +23,31 @@ export class Transport {
     this.intentionalClose = false
     this._connect()
 
-    // iOS Safari closes WebSocket when the page is backgrounded during initial load
-    // (e.g. when following a link from QR scanner). Reconnect when page becomes visible.
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && !this.intentionalClose) {
-        if (!this.ws || this.ws.readyState === WebSocket.CLOSED || this.ws.readyState === WebSocket.CLOSING) {
-          clearTimeout(this.reconnectTimer)
-          this.reconnectDelay = RECONNECT_BASE
-          this._connect()
-        }
+    // iOS Safari: when a page is loaded in the background (e.g. tapping a QR link
+    // while another app is open), Safari runs scripts immediately but suspends all
+    // network activity. The WebSocket gets stuck in CONNECTING state indefinitely.
+    // When the page becomes visible, force a fresh connection if the socket is not
+    // already OPEN — this handles CONNECTING, CLOSING, and CLOSED states.
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || this.intentionalClose) return
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) return
+      clearTimeout(this.reconnectTimer)
+      this.reconnectDelay = RECONNECT_BASE
+      if (this.ws) {
+        this.ws.onclose = null
+        this.ws.onerror = null
+        this.ws.close()
+        this.ws = null
       }
+      this._connect()
+    }
+
+    document.addEventListener('visibilitychange', onVisible)
+
+    // pageshow fires on bfcache restore (Safari back/forward navigation) where
+    // visibilitychange does not fire. e.persisted === true means page came from cache.
+    window.addEventListener('pageshow', (e) => {
+      if (e.persisted) onVisible()
     })
   }
 
