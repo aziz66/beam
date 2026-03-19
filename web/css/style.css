@@ -104,7 +104,7 @@ html, body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
 button, input, [contenteditable] {
@@ -165,8 +165,15 @@ button, input, [contenteditable] {
   justify-content: center;
   padding: 2rem;
   gap: 1.5rem;
-  min-height: 100vh;
+  min-height: 100%;
   position: relative;
+  overflow-y: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.landing::-webkit-scrollbar {
+  display: none;
 }
 
 .landing__logo {
