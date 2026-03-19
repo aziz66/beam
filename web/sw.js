@@ -1,7 +1,7 @@
-const CACHE_NAME = 'beam-v1'
+const CACHE_NAME = 'beam-v3'
 const SHELL_ASSETS = [
   '/',
-  '/css/style.css',
+  '/css/style.css?v=4',
   '/js/app.js',
   '/js/transport.js',
   '/js/crypto.js',

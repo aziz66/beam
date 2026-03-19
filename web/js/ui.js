@@ -28,18 +28,20 @@ document.querySelectorAll('.room__filter').forEach(btn => {
 })
 
 function applyFilter() {
-  const items = feed.querySelectorAll('.item[data-kind]')
+  const wrappers = feed.querySelectorAll('.item-wrapper')
   let visibleCount = 0
-  items.forEach(item => {
+  wrappers.forEach(wrapper => {
+    const item = wrapper.querySelector('.item[data-kind]')
+    if (!item) return
     if (activeFilter === 'all' || item.dataset.kind === activeFilter) {
-      item.style.display = ''
+      wrapper.style.display = ''
       visibleCount++
     } else {
-      item.style.display = 'none'
+      wrapper.style.display = 'none'
     }
   })
   // Show empty message only if there are items but none match the filter
-  const totalItems = items.length + feed.querySelectorAll('.item:not([data-kind])').length
+  const totalItems = wrappers.length
   if (totalItems > 0 && visibleCount === 0) {
     feedEmpty.style.display = ''
     feedEmpty.textContent = 'No items match this filter'
@@ -135,65 +137,67 @@ export function renderItem(item) {
 
   card.appendChild(content)
 
-  // Actions
+  // Wrap card and actions in a container for "below bubble" layout
+  const wrapper = document.createElement('div')
+  wrapper.className = 'item-wrapper' + (isMine ? ' item-wrapper--mine' : ' item-wrapper--peer')
+
+  wrapper.appendChild(card)
+
+  // Actions (below bubble)
   const actions = document.createElement('div')
   actions.className = 'item__actions'
 
   if (item.kind === 'text' || item.kind === 'code' || item.kind === 'link') {
     const copyBtn = document.createElement('button')
-    copyBtn.className = 'btn btn--secondary btn--small'
-    copyBtn.textContent = 'Copy'
+    copyBtn.className = 'item__action-btn'
+    copyBtn.title = 'Copy'
+    copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
     copyBtn.addEventListener('click', async () => {
       const ok = await copyToClipboard(item.text)
-      if (ok) showNotification('Copied!', 'success')
+      if (ok) {
+        copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'
+        showNotification('Copied!', 'success')
+        setTimeout(() => {
+          copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
+        }, 1500)
+      }
     })
     actions.appendChild(copyBtn)
   }
 
   if (item.kind === 'link') {
     const openBtn = document.createElement('button')
-    openBtn.className = 'btn btn--secondary btn--small'
-    openBtn.textContent = 'Open'
+    openBtn.className = 'item__action-btn'
+    openBtn.title = 'Open link'
+    openBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>'
     openBtn.addEventListener('click', () => {
       window.open(item.text, '_blank', 'noopener')
     })
     actions.appendChild(openBtn)
   }
 
-  if (item.kind === 'file' && item.blob_url) {
+  if ((item.kind === 'file' || item.kind === 'image' || item.kind === 'media') && item.blob_url) {
     const dlBtn = document.createElement('button')
-    dlBtn.className = 'btn btn--primary btn--small'
-    dlBtn.textContent = 'Download'
+    dlBtn.className = 'item__action-btn'
+    dlBtn.title = 'Download'
+    dlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>'
     dlBtn.addEventListener('click', () => {
       const a = document.createElement('a')
       a.href = item.blob_url
-      a.download = item.file_name || 'download'
+      a.download = item.file_name || (item.kind === 'image' ? 'image.png' : 'download')
       a.click()
     })
     actions.appendChild(dlBtn)
   }
 
-  if (item.kind === 'image' && item.blob_url) {
-    const dlBtn = document.createElement('button')
-    dlBtn.className = 'btn btn--primary btn--small'
-    dlBtn.textContent = 'Download'
-    dlBtn.addEventListener('click', () => {
-      const a = document.createElement('a')
-      a.href = item.blob_url
-      a.download = item.file_name || 'image.png'
-      a.click()
-    })
-    actions.appendChild(dlBtn)
-  }
-
-  card.appendChild(actions)
+  wrapper.appendChild(actions)
 
   // Hide if it doesn't match the active filter
-  if (activeFilter !== 'all' && card.dataset.kind !== activeFilter) {
-    card.style.display = 'none'
+  if (activeFilter !== 'all' && wrapper.querySelector('.item').dataset.kind !== activeFilter) {
+    wrapper.style.display = 'none'
   }
 
-  feed.appendChild(card)
+  feed.appendChild(wrapper)
 
   if (autoScroll) {
     feed.scrollTop = feed.scrollHeight
@@ -309,30 +313,48 @@ export function completeFileTransfer(fileId, item) {
 
   card.appendChild(content)
 
-  // Actions — always show download for files/images with blob_url
+  // Ensure card is wrapped in .item-wrapper
+  let wrapper = card.parentNode
+  if (!wrapper || !wrapper.classList.contains('item-wrapper')) {
+    wrapper = document.createElement('div')
+    if (card.parentNode) {
+      card.parentNode.insertBefore(wrapper, card)
+    } else {
+      feed.appendChild(wrapper)
+    }
+    wrapper.appendChild(card)
+  }
+  wrapper.className = 'item-wrapper' + (isMine ? ' item-wrapper--mine' : ' item-wrapper--peer')
+
+  // Remove old actions if any
+  const oldActions = wrapper.querySelector('.item__actions')
+  if (oldActions) oldActions.remove()
+
+  // Actions — below bubble
   const actions = document.createElement('div')
   actions.className = 'item__actions'
 
   if (item.blob_url) {
     const dlBtn = document.createElement('button')
-    dlBtn.className = 'btn btn--primary btn--small'
-    dlBtn.textContent = 'Download'
+    dlBtn.className = 'item__action-btn'
+    dlBtn.title = 'Download'
+    dlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>'
     dlBtn.addEventListener('click', () => {
       const a = document.createElement('a')
       a.href = item.blob_url
-      a.download = item.file_name || 'download'
+      a.download = item.file_name || (finalKind === 'image' ? 'image.png' : 'download')
       a.click()
     })
     actions.appendChild(dlBtn)
   }
 
-  card.appendChild(actions)
+  wrapper.appendChild(actions)
 
   // Respect active filter
-  if (activeFilter !== 'all' && card.dataset.kind !== activeFilter) {
-    card.style.display = 'none'
+  if (activeFilter !== 'all' && finalKind !== activeFilter) {
+    wrapper.style.display = 'none'
   } else {
-    card.style.display = ''
+    wrapper.style.display = ''
   }
 
   if (autoScroll) feed.scrollTop = feed.scrollHeight
