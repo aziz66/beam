@@ -261,6 +261,7 @@ button, input, [contenteditable] {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  text-decoration: none;
 }
 
 .room__code {
