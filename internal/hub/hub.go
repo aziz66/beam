@@ -14,8 +14,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
-	"github.com/beam-sh/beam/internal/protocol"
-	"github.com/beam-sh/beam/internal/room"
+	"github.com/aziz66/beam/internal/protocol"
+	"github.com/aziz66/beam/internal/room"
 )
 
 var roomCodeRe = regexp.MustCompile(`^[a-z]+-[a-z]+-\d{2,3}$`)

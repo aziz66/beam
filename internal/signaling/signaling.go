@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"log"
 
-	"github.com/beam-sh/beam/internal/protocol"
-	"github.com/beam-sh/beam/internal/room"
+	"github.com/aziz66/beam/internal/protocol"
+	"github.com/aziz66/beam/internal/room"
 )
 
 // Signaling relays WebRTC SDP offers/answers and ICE candidates

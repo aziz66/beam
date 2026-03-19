@@ -1,4 +1,4 @@
-module github.com/beam-sh/beam
+module github.com/aziz66/beam
 
 go 1.23.7
 

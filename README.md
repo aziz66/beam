@@ -16,7 +16,7 @@ No install on the receiving end. No accounts. No persistence by default. The ser
 ### Docker
 
 ```bash
-docker run -p 8080:8080 ghcr.io/beam-sh/beam
+docker run -p 8080:8080 ghcr.io/aziz66/beam
 ```
 
 ### Binary
@@ -29,7 +29,7 @@ docker run -p 8080:8080 ghcr.io/beam-sh/beam
 ### From Source
 
 ```bash
-git clone https://github.com/beam-sh/beam.git
+git clone https://github.com/aziz66/beam.git
 cd beam
 go build -ldflags "-s -w" -o beam .
 ./beam
@@ -166,7 +166,7 @@ beam.example.com {
 ```yaml
 services:
   beam:
-    image: ghcr.io/beam-sh/beam:latest
+    image: ghcr.io/aziz66/beam:latest
     ports:
       - "8080:8080"
     volumes:

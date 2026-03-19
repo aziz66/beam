@@ -8,9 +8,9 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/beam-sh/beam/internal/preview"
-	"github.com/beam-sh/beam/internal/protocol"
-	"github.com/beam-sh/beam/internal/room"
+	"github.com/aziz66/beam/internal/preview"
+	"github.com/aziz66/beam/internal/protocol"
+	"github.com/aziz66/beam/internal/room"
 )
 
 type API struct {

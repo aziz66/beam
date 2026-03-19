@@ -13,11 +13,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/beam-sh/beam/internal/api"
-	"github.com/beam-sh/beam/internal/config"
-	"github.com/beam-sh/beam/internal/hub"
-	"github.com/beam-sh/beam/internal/preview"
-	"github.com/beam-sh/beam/internal/room"
+	"github.com/aziz66/beam/internal/api"
+	"github.com/aziz66/beam/internal/config"
+	"github.com/aziz66/beam/internal/hub"
+	"github.com/aziz66/beam/internal/preview"
+	"github.com/aziz66/beam/internal/room"
 )
 
 //go:embed web/*

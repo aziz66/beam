@@ -204,7 +204,7 @@ beam/
 
 ```bash
 mkdir beam && cd beam
-go mod init github.com/beam-sh/beam
+go mod init github.com/aziz66/beam
 ```
 
 ### Step 1.2: Install Go Dependencies
@@ -974,7 +974,7 @@ ENTRYPOINT ["./beam"]
 version: "3.8"
 services:
   beam:
-    image: ghcr.io/beam-sh/beam:latest
+    image: ghcr.io/aziz66/beam:latest
     ports:
       - "8080:8080"
     volumes:
@@ -1012,8 +1012,8 @@ The README should include:
 3. **Why Beam**: 3-4 bullet points on what makes it different
 4. **Quick Start**:
    - Single binary: `curl -L ... | tar xz && ./beam`
-   - Docker: `docker run -p 8080:8080 ghcr.io/beam-sh/beam`
-   - From source: `go install github.com/beam-sh/beam@latest`
+   - Docker: `docker run -p 8080:8080 ghcr.io/aziz66/beam`
+   - From source: `go install github.com/aziz66/beam@latest`
 5. **Features**: Brief list with icons/emoji
 6. **Configuration**: Table of all flags and env vars
 7. **API**: Brief overview with curl examples

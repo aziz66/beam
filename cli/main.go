@@ -19,7 +19,7 @@ import (
 	"github.com/gorilla/websocket"
 	"golang.org/x/crypto/nacl/secretbox"
 
-	"github.com/beam-sh/beam/internal/protocol"
+	"github.com/aziz66/beam/internal/protocol"
 )
 
 const chunkSize = 64 * 1024 // 64KB

@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/beam-sh/beam/internal/config"
-	"github.com/beam-sh/beam/internal/namegen"
+	"github.com/aziz66/beam/internal/config"
+	"github.com/aziz66/beam/internal/namegen"
 	"golang.org/x/crypto/bcrypt"
 )
 
