@@ -137,6 +137,30 @@ export function renderItem(item) {
 
   card.appendChild(content)
 
+  // Tap/click interactions on the card itself
+  if (item.kind === 'text' || item.kind === 'code') {
+    card.style.cursor = 'pointer'
+    card.addEventListener('click', async () => {
+      if (window.getSelection().toString()) return // user is selecting text
+      const ok = await copyToClipboard(item.text)
+      if (ok) { flashCard(card); showNotification('Copied!', 'success') }
+    })
+  } else if (item.kind === 'image' && item.blob_url) {
+    card.style.cursor = 'pointer'
+    card.addEventListener('click', () => {
+      triggerDownload(item.blob_url, item.file_name || 'image.png')
+      flashCard(card)
+    })
+  } else if (item.kind === 'file' && item.blob_url &&
+      !isVideoFile(item.file_name) && !isAudioFile(item.file_name) &&
+      !(isPdfFile(item.file_name) && !isIOS)) {
+    card.style.cursor = 'pointer'
+    card.addEventListener('click', () => {
+      triggerDownload(item.blob_url, item.file_name || 'download')
+      flashCard(card)
+    })
+  }
+
   // Wrap card and actions in a container for "below bubble" layout
   const wrapper = document.createElement('div')
   wrapper.className = 'item-wrapper' + (isMine ? ' item-wrapper--mine' : ' item-wrapper--peer')
@@ -313,6 +337,24 @@ export function completeFileTransfer(fileId, item) {
 
   card.appendChild(content)
 
+  // Tap/click interactions on upgraded card
+  card.style.cursor = ''
+  if (finalKind === 'image' && item.blob_url) {
+    card.style.cursor = 'pointer'
+    card.addEventListener('click', () => {
+      triggerDownload(item.blob_url, item.file_name || 'image.png')
+      flashCard(card)
+    })
+  } else if (finalKind === 'file' && item.blob_url &&
+      !isVideoFile(item.file_name) && !isAudioFile(item.file_name) &&
+      !(isPdfFile(item.file_name) && !isIOS)) {
+    card.style.cursor = 'pointer'
+    card.addEventListener('click', () => {
+      triggerDownload(item.blob_url, item.file_name || 'download')
+      flashCard(card)
+    })
+  }
+
   // Ensure card is wrapped in .item-wrapper
   let wrapper = card.parentNode
   if (!wrapper || !wrapper.classList.contains('item-wrapper')) {
@@ -369,6 +411,20 @@ async function renderPdfThumbnailInto(container, blobUrl, fileName) {
     img.alt = fileName || 'PDF page 1'
     container.appendChild(img)
   }
+}
+
+function flashCard(card) {
+  card.style.transition = 'opacity 0.12s'
+  card.style.opacity = '0.55'
+  setTimeout(() => { card.style.opacity = '' }, 120)
+  setTimeout(() => { card.style.transition = '' }, 260)
+}
+
+function triggerDownload(url, name) {
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
 }
 
 function isImageFile(name) {

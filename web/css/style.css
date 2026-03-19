@@ -682,6 +682,14 @@ button, input, [contenteditable] {
   box-shadow: var(--shadow);
 }
 
+/* Clickable bubbles (text/code = copy, image/file = download) */
+.item[style*="cursor: pointer"]:hover {
+  box-shadow: var(--shadow-glow);
+}
+.item[style*="cursor: pointer"]:active {
+  transform: scale(0.98);
+}
+
 .item--mine {
   border-right: 3px solid var(--accent);
   background: linear-gradient(135deg, var(--bg-card-solid), var(--accent-light));
