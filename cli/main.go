@@ -392,7 +392,10 @@ func waitForJoined(conn *websocket.Conn) {
 		"payload": map[string]string{"device_label": "Beam CLI"},
 		"ts":      time.Now().UnixMilli(),
 	}
-	data, _ := json.Marshal(join)
+	data, err := json.Marshal(join)
+	if err != nil {
+		log.Fatalf("marshal join: %v", err)
+	}
 	if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 		log.Fatalf("send join: %v", err)
 	}
@@ -436,7 +439,10 @@ func sendTextCLI(conn *websocket.Conn, text, keyB64 string) {
 		},
 		"ts": time.Now().UnixMilli(),
 	}
-	data, _ := json.Marshal(env)
+	data, err2 := json.Marshal(env)
+	if err2 != nil {
+		log.Fatalf("marshal text item: %v", err2)
+	}
 	if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 		log.Fatalf("send text: %v", err)
 	}
@@ -480,7 +486,10 @@ func sendFileCLI(conn *websocket.Conn, filePath, keyB64 string) {
 		},
 		"ts": time.Now().UnixMilli(),
 	}
-	data, _ := json.Marshal(meta)
+	data, err := json.Marshal(meta)
+	if err != nil {
+		log.Fatalf("marshal file_meta: %v", err)
+	}
 	if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 		log.Fatalf("send file_meta: %v", err)
 	}
@@ -507,7 +516,10 @@ func sendFileCLI(conn *websocket.Conn, filePath, keyB64 string) {
 			},
 			"ts": time.Now().UnixMilli(),
 		}
-		cdata, _ := json.Marshal(chunk)
+		cdata, err := json.Marshal(chunk)
+		if err != nil {
+			log.Fatalf("marshal chunk %d: %v", i, err)
+		}
 		if err := conn.WriteMessage(websocket.TextMessage, cdata); err != nil {
 			log.Fatalf("send chunk %d: %v", i, err)
 		}
@@ -522,7 +534,10 @@ func sendFileCLI(conn *websocket.Conn, filePath, keyB64 string) {
 		"payload": map[string]string{"file_id": fileID},
 		"ts":      time.Now().UnixMilli(),
 	}
-	cdata, _ := json.Marshal(complete)
+	cdata, err := json.Marshal(complete)
+	if err != nil {
+		log.Fatalf("marshal file_complete: %v", err)
+	}
 	if err := conn.WriteMessage(websocket.TextMessage, cdata); err != nil {
 		log.Fatalf("send file_complete: %v", err)
 	}

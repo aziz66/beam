@@ -107,7 +107,13 @@ func (m *Manager) CreateRoom(pinned bool, passphrase string) (*Room, error) {
 	if pinned && enablePinned {
 		r.Pinned = true
 		if passphrase != "" {
-			bcryptSem <- struct{}{}
+			// Acquire semaphore with the same timeout used by ComparePassphrase so a
+			// concurrent compare cannot stall room creation indefinitely.
+			select {
+			case bcryptSem <- struct{}{}:
+			case <-time.After(30 * time.Second):
+				return nil, fmt.Errorf("passphrase hashing timed out")
+			}
 			hash, err := bcrypt.GenerateFromPassword([]byte(passphrase), 12)
 			<-bcryptSem
 			if err != nil {

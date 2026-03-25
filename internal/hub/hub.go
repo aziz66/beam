@@ -283,7 +283,8 @@ func (h *Hub) handleConnection(conn *websocket.Conn, deviceID, roomCode string) 
 }
 
 func (h *Hub) readPump(conn *websocket.Conn, client *room.Client, rm *room.Room) {
-	defer conn.Close()
+	// Do NOT defer conn.Close() here — WritePump owns the connection lifecycle.
+	// Calling conn.Close() concurrently with WritePump's in-progress write panics.
 
 	// Token bucket rate limiter (per-connection, single goroutine — no mutex needed)
 	tokens := rateBurst
@@ -351,7 +352,8 @@ func (h *Hub) routeMessage(env *protocol.Envelope, raw []byte, sender *room.Clie
 		}
 		ttl := rm.DefaultTTL
 		var itemPayload protocol.ItemPayload
-		if env.ParsePayload(&itemPayload) == nil && itemPayload.TTL > 0 {
+		if env.ParsePayload(&itemPayload) == nil && itemPayload.TTL > 0 && itemPayload.TTL <= 86400 {
+			// Cap at 24 h (86400 s) to prevent integer overflow in time.Duration arithmetic
 			clientTTL := time.Duration(itemPayload.TTL) * time.Second
 			if clientTTL < rm.DefaultTTL {
 				ttl = clientTTL
@@ -386,10 +388,7 @@ func (h *Hub) routeMessage(env *protocol.Envelope, raw []byte, sender *room.Clie
 	case protocol.TypePing:
 		pong, _ := protocol.NewEnvelope(protocol.TypePong, nil)
 		data, _ := json.Marshal(pong)
-		select {
-		case sender.Send <- data:
-		default:
-		}
+		sender.TrySend(data)
 	}
 }
 
@@ -410,10 +409,8 @@ func (h *Hub) relayToRoom(data []byte, sender *room.Client, rm *room.Room) {
 		if c.DeviceID == sender.DeviceID {
 			continue
 		}
-		select {
-		case c.Send <- data:
-		default:
-			log.Printf("send buffer full for device=%s, dropping message", c.DeviceID)
+		if !c.TrySend(data) {
+			log.Printf("send buffer full or client closed for device=%s, dropping message", c.DeviceID)
 		}
 	}
 }
@@ -426,10 +423,8 @@ func (h *Hub) relayToDevice(data []byte, targetID string, rm *room.Room) {
 	if c == nil {
 		return
 	}
-	select {
-	case c.Send <- data:
-	default:
-		log.Printf("send buffer full for device=%s, dropping message", targetID)
+	if !c.TrySend(data) {
+		log.Printf("send buffer full or client closed for device=%s, dropping message", targetID)
 	}
 }
 
@@ -456,10 +451,7 @@ func (h *Hub) broadcastDeviceList(rm *room.Room) {
 	}
 
 	for _, c := range clients {
-		select {
-		case c.Send <- data:
-		default:
-		}
+		c.TrySend(data)
 	}
 }
 
@@ -475,20 +467,27 @@ func (h *Hub) sendJoined(client *room.Client, roomCode, deviceID string) {
 	if err != nil {
 		return
 	}
-	select {
-	case client.Send <- data:
-	default:
-	}
+	client.TrySend(data)
 }
 
 func sanitizeLabel(s string) string {
 	var b strings.Builder
 	for _, r := range s {
-		if !unicode.IsControl(r) {
+		if !unicode.IsControl(r) && !isBidiOverride(r) {
 			b.WriteRune(r)
 		}
 	}
 	return b.String()
+}
+
+// isBidiOverride returns true for Unicode bidirectional override/isolate
+// characters that are not classified as control chars but can visually spoof
+// device labels (e.g. U+202E RIGHT-TO-LEFT OVERRIDE).
+func isBidiOverride(r rune) bool {
+	return (r >= 0x200E && r <= 0x200F) || // LRM, RLM
+		(r >= 0x202A && r <= 0x202E) || // LRE, RLE, PDF, LRO, RLO
+		(r >= 0x2066 && r <= 0x2069) || // LRI, RLI, FSI, PDI
+		r == 0x061C // Arabic Letter Mark
 }
 
 func (h *Hub) sendError(conn *websocket.Conn, code, message string) {

@@ -9,6 +9,10 @@ import (
 
 const (
 	maxStoredItems = 50
+	// maxItemBytes caps the stored size per item envelope to prevent a single
+	// large message from consuming disproportionate server memory. Items larger
+	// than this are relayed but not stored in the room history.
+	maxItemBytes   = 256 * 1024 // 256 KB
 	sendBufferSize = 256
 	writeWait      = 10 * time.Second
 	pongWait       = 60 * time.Second
@@ -105,6 +109,9 @@ func (r *Room) ClientCount() int {
 }
 
 func (r *Room) StoreItem(data []byte, ttl time.Duration) {
+	if len(data) > maxItemBytes {
+		return // relay but do not store oversized items
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -232,6 +239,20 @@ func (c *Client) Close() {
 	})
 	// Conn is closed by WritePump's deferred c.Conn.Close().
 	// Do NOT call c.Conn.Close() here — it races with WritePump's in-progress write.
+}
+
+// TrySend attempts a non-blocking send to the client's Send channel.
+// Returns false if the buffer is full or the client has already disconnected.
+// A deferred recover() guards against the race where Close() fires between
+// the liveness check and the select in the calling goroutine.
+func (c *Client) TrySend(data []byte) bool {
+	defer func() { recover() }() //nolint:errcheck
+	select {
+	case c.Send <- data:
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *Room) HasGraceTimer() bool {

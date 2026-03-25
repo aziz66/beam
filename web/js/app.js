@@ -434,9 +434,10 @@ if (passphraseInput) {
 }
 
 settingsSaveBtn.addEventListener('click', () => {
-  const label = settingsDeviceLabel.value.trim()
-  if (label) {
-    deviceLabel = label
+  const rawLabel = settingsDeviceLabel.value.trim()
+  if (rawLabel) {
+    // Truncate to 64 chars (server enforces this too, but cap client-side for UX)
+    deviceLabel = rawLabel.slice(0, 64)
     // Re-send join to update label (include passphrase for protected rooms)
     transport.send({
       type: 'join',
@@ -447,6 +448,9 @@ settingsSaveBtn.addEventListener('click', () => {
   const parsedTtl = parseInt(settingsTtl.value, 10)
   if (!isNaN(parsedTtl) && parsedTtl >= 1 && parsedTtl <= 1440) {
     ttlMinutes = parsedTtl
+  } else if (settingsTtl.value.trim() !== '') {
+    showNotification('TTL must be between 1 and 1440 minutes', 'error')
+    return
   }
   settingsModal.classList.remove('modal-backdrop--active')
   showNotification('Settings saved', 'success')
@@ -454,10 +458,14 @@ settingsSaveBtn.addEventListener('click', () => {
 
 sendBtn.addEventListener('click', () => {
   const text = inputField.innerText.trim()
-  if (text) {
-    sendTextItem(text)
-    inputField.innerHTML = ''
+  if (!text) return
+  // Guard against very large pastes that would block the main thread during encryption
+  if (text.length > 200_000) {
+    showNotification('Text too large to send (max 200 000 chars)', 'error')
+    return
   }
+  sendTextItem(text)
+  inputField.innerHTML = ''
 })
 
 inputField.addEventListener('keydown', (e) => {
@@ -567,7 +575,10 @@ async function boot() {
     navigator.serviceWorker.addEventListener('message', (event) => {
       if (event.data.type === 'share-target' && state === 'CONNECTED') {
         if (event.data.text) sendTextItem(event.data.text)
-        if (event.data.file) sendFiles([event.data.file])
+        if (event.data.file) sendFiles([event.data.file]).catch(err => {
+          console.error('share-target sendFiles failed:', err)
+          showNotification('Failed to share file', 'error')
+        })
       }
     })
   }

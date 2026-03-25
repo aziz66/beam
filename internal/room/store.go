@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"path/filepath"
+	"sync"
 	"time"
 
 	badger "github.com/dgraph-io/badger/v4"
@@ -20,8 +21,9 @@ type RoomMetadata struct {
 }
 
 type Store struct {
-	db   *badger.DB
-	done chan struct{}
+	db        *badger.DB
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 func NewStore(dataDir string) (*Store, error) {
@@ -104,8 +106,12 @@ func (s *Store) DeleteRoom(code string) error {
 }
 
 func (s *Store) Close() error {
-	close(s.done)
-	return s.db.Close()
+	var err error
+	s.closeOnce.Do(func() {
+		close(s.done)
+		err = s.db.Close()
+	})
+	return err
 }
 
 func (s *Store) gcLoop() {

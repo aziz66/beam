@@ -23,6 +23,8 @@ export class WebRTCManager {
     this.peerDeviceId = null
     this.onMessage = null
     this.onStateChange = null
+    // ICE candidates that arrived before setRemoteDescription completed
+    this._pendingCandidates = []
 
     transport.on('signal_offer', (env) => this._handleOffer(env))
     transport.on('signal_answer', (env) => this._handleAnswer(env))
@@ -31,6 +33,7 @@ export class WebRTCManager {
 
   // Attempt P2P only for 2-device rooms
   tryConnect(devices, myDeviceId) {
+    if (!myDeviceId) return // not yet joined — myDeviceId is null until server sends 'joined'
     this.myDeviceId = myDeviceId
 
     if (devices.length !== 2 || this.active || this.pc) return
@@ -47,19 +50,21 @@ export class WebRTCManager {
 
   _initiateConnection() {
     this._createPeerConnection()
+    // Capture pc and peerDeviceId now — _cleanup() may null them during await
+    const pc = this.pc
+    const peerDeviceId = this.peerDeviceId
 
-    this.dataChannel = this.pc.createDataChannel('beam', {
-      ordered: true
-    })
+    this.dataChannel = pc.createDataChannel('beam', { ordered: true })
     this._setupDataChannel(this.dataChannel)
 
-    this.pc.createOffer()
-      .then(offer => this.pc.setLocalDescription(offer))
+    pc.createOffer()
+      .then(offer => pc.setLocalDescription(offer))
       .then(() => {
+        if (!pc.localDescription) return // cleanup fired during await
         this.transport.send({
           type: 'signal_offer',
-          payload: { sdp: this.pc.localDescription.sdp },
-          target_id: this.peerDeviceId,
+          payload: { sdp: pc.localDescription.sdp },
+          target_id: peerDeviceId,
           ts: Date.now()
         })
       })
@@ -76,6 +81,8 @@ export class WebRTCManager {
       this.pc = null
     }
     this.pc = new RTCPeerConnection(rtcConfig)
+    // Reset ICE candidate buffer for fresh peer connection
+    this._pendingCandidates = []
 
     this.pc.onicecandidate = (event) => {
       if (event.candidate && this.peerDeviceId) {
@@ -143,6 +150,13 @@ export class WebRTCManager {
 
     try {
       await this.pc.setRemoteDescription({ type: 'offer', sdp: payload.sdp })
+
+      // Flush ICE candidates that arrived before remote description was ready
+      for (const candidate of this._pendingCandidates) {
+        try { await this.pc.addIceCandidate(candidate) } catch {}
+      }
+      this._pendingCandidates = []
+
       const answer = await this.pc.createAnswer()
       await this.pc.setLocalDescription(answer)
 
@@ -160,8 +174,20 @@ export class WebRTCManager {
 
   async _handleAnswer(env) {
     if (!this.pc) return
+    // Reject answers from unexpected peers — prevents a third device from
+    // injecting a rogue SDP answer and hijacking the P2P session.
+    if (this.peerDeviceId && env.device_id !== this.peerDeviceId) {
+      console.warn('webrtc: ignoring answer from unexpected peer', env.device_id)
+      return
+    }
     try {
       await this.pc.setRemoteDescription({ type: 'answer', sdp: env.payload.sdp })
+
+      // Flush ICE candidates that arrived before remote description was ready
+      for (const candidate of this._pendingCandidates) {
+        try { await this.pc.addIceCandidate(candidate) } catch {}
+      }
+      this._pendingCandidates = []
     } catch (err) {
       console.error('webrtc set answer failed:', err)
       this._cleanup()
@@ -175,6 +201,12 @@ export class WebRTCManager {
     if (!pc) return
     try {
       const candidate = JSON.parse(env.payload.candidate)
+      // Buffer candidates until remote description is set — adding them too early
+      // throws InvalidStateError and permanently loses the candidate.
+      if (!pc.remoteDescription) {
+        this._pendingCandidates.push(candidate)
+        return
+      }
       await pc.addIceCandidate(candidate)
     } catch (err) {
       console.error('webrtc ice failed:', err)
@@ -210,5 +242,6 @@ export class WebRTCManager {
     }
     this.active = false
     this.peerDeviceId = null
+    this._pendingCandidates = []
   }
 }

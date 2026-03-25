@@ -215,10 +215,7 @@ export function renderItem(item) {
     dlBtn.title = 'Download'
     dlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>'
     dlBtn.addEventListener('click', () => {
-      const a = document.createElement('a')
-      a.href = item.blob_url
-      a.download = item.file_name || (item.kind === 'image' ? 'image.png' : 'download')
-      a.click()
+      triggerDownload(item.blob_url, item.file_name || (item.kind === 'image' ? 'image.png' : 'download'))
     })
     actions.appendChild(dlBtn)
   }
@@ -303,7 +300,13 @@ export function renderFileProgress(fileId, fileName, fileSize, progress) {
         <div class="item__progress-bar"><div class="item__progress-fill" style="width:0%"></div></div>
         <div class="item__progress-text">0%</div>
       </div>`
-    feed.appendChild(card)
+
+    // Wrap in .item-wrapper immediately so the feed cap and filter bar see
+    // in-progress transfers the same way as completed items.
+    const wrapper = document.createElement('div')
+    wrapper.className = 'item-wrapper item-wrapper--peer'
+    wrapper.appendChild(card)
+    feed.appendChild(wrapper)
   }
 
   const fill = card.querySelector('.item__progress-fill')
@@ -482,7 +485,11 @@ function triggerDownload(url, name) {
   const a = document.createElement('a')
   a.href = url
   a.download = name
+  // Must be in the document for Firefox to honour the download attribute
+  a.style.display = 'none'
+  document.body.appendChild(a)
   a.click()
+  document.body.removeChild(a)
 }
 
 function isImageFile(name) {

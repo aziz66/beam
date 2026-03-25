@@ -421,9 +421,15 @@ func (a *API) handleRoomItems(w http.ResponseWriter, r *http.Request, code strin
 			}
 		}
 		items := rm.GetRecentItems()
+		// [][]byte marshals as base64 in Go's json encoder; wrap each element as
+		// json.RawMessage so clients receive JSON objects, not base64 strings.
+		rawItems := make([]json.RawMessage, len(items))
+		for i, item := range items {
+			rawItems[i] = json.RawMessage(item)
+		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"items": items,
-			"count": len(items),
+			"items": rawItems,
+			"count": len(rawItems),
 		})
 	case http.MethodPost:
 		if !a.itemsPostAllowed(r) {
@@ -442,7 +448,10 @@ func (a *API) handleRoomItems(w http.ResponseWriter, r *http.Request, code strin
 				return
 			}
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, 4096)
+		// 512 KB limit — encrypted items include base64-encoded ciphertext which
+		// expands ~4/3; this covers ~370 KB of plaintext, sufficient for typical
+		// clipboard content. The WebSocket path enforces a separate 10 MB limit.
+		r.Body = http.MaxBytesReader(w, r.Body, 512*1024)
 		var payload protocol.ItemPayload
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid payload")
@@ -463,8 +472,9 @@ func (a *API) handleRoomItems(w http.ResponseWriter, r *http.Request, code strin
 		}
 
 		// Respect client-requested TTL (clamped to room default), consistent with the WS path.
+		// Cap at 24 h to prevent integer overflow in time.Duration arithmetic.
 		ttl := rm.DefaultTTL
-		if payload.TTL > 0 {
+		if payload.TTL > 0 && payload.TTL <= 86400 {
 			if clientTTL := time.Duration(payload.TTL) * time.Second; clientTTL < ttl {
 				ttl = clientTTL
 			}
@@ -473,10 +483,7 @@ func (a *API) handleRoomItems(w http.ResponseWriter, r *http.Request, code strin
 
 		// Broadcast to connected clients
 		for _, c := range rm.GetClients() {
-			select {
-			case c.Send <- data:
-			default:
-			}
+			c.TrySend(data)
 		}
 
 		writeJSON(w, http.StatusCreated, map[string]string{"status": "sent"})
@@ -515,7 +522,9 @@ func (a *API) handlePreview(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("json encode error: %v", err)
+	}
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

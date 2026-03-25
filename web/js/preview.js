@@ -61,6 +61,17 @@ export function renderTextContent(text, maxLength = 500) {
 }
 
 export function renderLinkPreview(url) {
+  // Defense in depth: only render http(s) URLs even though detectContentKind
+  // already filters non-http URLs. Guards against future callers that bypass detection.
+  try {
+    const u = new URL(url)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+      return document.createElement('div')
+    }
+  } catch {
+    return document.createElement('div')
+  }
+
   const el = document.createElement('div')
   el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="item__content--link">${escapeHtml(url)}</a>`
 

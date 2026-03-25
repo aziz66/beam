@@ -35,6 +35,10 @@ pub fn handle_tray_event(app: &AppHandle, event: SystemTrayEvent) {
                 let state = app.state::<AppState>();
                 let url = { state.config.lock().unwrap().as_ref().map(room_url) };
                 if let Some(url) = url {
+                    // Update last_remote before writing the URL to the clipboard so
+                    // the clipboard watcher doesn't mistake the link (which contains
+                    // the encryption key) for new user text and broadcast it to peers.
+                    *state.last_remote.lock().unwrap() = url.clone();
                     if let Err(e) = crate::clipboard::write_clipboard(&url) {
                         eprintln!("beam-agent: copy link failed: {}", e);
                     }

@@ -5,6 +5,9 @@ const CHUNK_SIZE = 64 * 1024 // 64KB
 const TRANSFER_TIMEOUT = 5 * 60 * 1000 // 5 minutes
 // Cap peer-supplied total_chunks to prevent memory exhaustion (~1 GB max).
 const MAX_TOTAL_CHUNKS = 16384
+// Cap the total assembled size before Uint8Array allocation to avoid OOM on
+// low-memory devices. 512 MB is a generous limit that should rarely be hit.
+const MAX_FILE_BYTES = 512 * 1024 * 1024
 
 // Active transfers: fileId -> { chunks[], meta, received }
 const incomingTransfers = new Map()
@@ -82,11 +85,13 @@ export function handleFileMeta(payload, key) {
     console.warn('stream: rejected file_meta with invalid total_chunks', payload.total_chunks)
     return
   }
-  const safeSize = (typeof payload.size === 'number' && payload.size >= 0) ? payload.size : 0
+  const safeSize = (typeof payload.size === 'number' && payload.size >= 0 && payload.size <= MAX_FILE_BYTES) ? payload.size : 0
 
   let fileName = 'unknown'
   try {
-    fileName = new TextDecoder().decode(decrypt(payload.encrypted_name, payload.nonce, key))
+    const decoded = new TextDecoder().decode(decrypt(payload.encrypted_name, payload.nonce, key))
+    // Cap to 255 chars — a malicious peer cannot cause DOM/memory issues with an enormous name
+    fileName = decoded.length > 255 ? decoded.slice(0, 252) + '...' : decoded
   } catch {
     fileName = 'encrypted-file'
   }
@@ -113,16 +118,17 @@ export function handleFileChunk(payload, key) {
   const transfer = incomingTransfers.get(payload.file_id)
   if (!transfer) return
 
-  // Reject out-of-range indices — a malicious peer could send index=9999999 and
-  // cause a huge sparse array, consuming memory without advancing the transfer.
+  // Reject out-of-range indices without resetting the cleanup timer — a malicious
+  // peer could repeatedly send bad indices to keep the transfer alive indefinitely
+  // without making actual progress.
   if (payload.index < 0 || payload.index >= transfer.meta.total_chunks) return
 
   // Ignore duplicate chunks (network retransmit) — they would corrupt received count
   if (transfer.chunks[payload.index] !== undefined) return
 
-  // Reset the stale-transfer cleanup timer on each new chunk so that a slow but
-  // active transfer is not abandoned partway through (the 5-minute window is
-  // per-chunk-gap, not total transfer time).
+  // Reset the stale-transfer cleanup timer on each *new valid* chunk so that a
+  // slow but active transfer is not abandoned partway through (the 5-minute
+  // window is per-chunk-gap, not total transfer time).
   clearTimeout(transfer.cleanupTimer)
   transfer.cleanupTimer = setTimeout(() => {
     if (incomingTransfers.has(payload.file_id)) {
@@ -161,8 +167,14 @@ export function handleFileComplete(payload, onComplete) {
     return
   }
 
-  // Combine chunks
+  // Combine chunks — guard against OOM from oversized transfers
   const totalSize = transfer.chunks.reduce((sum, c) => sum + (c ? c.length : 0), 0)
+  if (totalSize > MAX_FILE_BYTES) {
+    console.error(`file_complete: assembled size ${totalSize} exceeds ${MAX_FILE_BYTES} bytes — discarding`)
+    incomingTransfers.delete(payload.file_id)
+    removeFeedCard(payload.file_id)
+    return
+  }
   const combined = new Uint8Array(totalSize)
   let offset = 0
   for (const chunk of transfer.chunks) {

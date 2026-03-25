@@ -37,7 +37,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to open store: %v", err)
 		}
-		defer store.Close()
+		defer func() {
+			if err := store.Close(); err != nil {
+				log.Printf("store close error: %v", err)
+			}
+		}()
 	}
 
 	// Initialize room manager
@@ -126,7 +130,7 @@ func main() {
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("shutdown error: %v", err)
+		log.Printf("shutdown error: %v", err)
 	}
 	log.Println("beam server stopped")
 }

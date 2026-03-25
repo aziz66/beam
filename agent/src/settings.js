@@ -1,6 +1,7 @@
 const serverUrl = document.getElementById('server-url')
 const roomCode = document.getElementById('room-code')
 const encryptionKey = document.getElementById('encryption-key')
+const passphrase = document.getElementById('passphrase')
 const autoSync = document.getElementById('auto-sync')
 const connectBtn = document.getElementById('connect-btn')
 const statusDot = document.getElementById('status-dot')
@@ -31,17 +32,20 @@ window.addEventListener('load', () => {
       if (config.server_url) serverUrl.value = config.server_url
       if (config.room_code) roomCode.value = config.room_code
       if (config.encryption_key) encryptionKey.value = config.encryption_key
+      if (config.passphrase) passphrase.value = config.passphrase
       if (typeof config.auto_sync === 'boolean') autoSync.checked = config.auto_sync
     })
     .catch(() => {})
 })
 
 connectBtn.addEventListener('click', () => {
+  const passphraseVal = passphrase.value.trim()
   const config = {
     server_url: serverUrl.value.trim(),
     room_code: roomCode.value.trim(),
     encryption_key: encryptionKey.value.trim(),
-    auto_sync: autoSync.checked
+    auto_sync: autoSync.checked,
+    ...(passphraseVal ? { passphrase: passphraseVal } : {})
   }
 
   if (!config.room_code || !config.encryption_key) {
@@ -49,15 +53,18 @@ connectBtn.addEventListener('click', () => {
     return
   }
 
-  // Validate key is 32-byte base64 before even attempting to connect
+  // Validate key is 32-byte base64 before even attempting to connect.
+  // The URL fragment uses standard base64 (not URL-safe), but accept both by
+  // normalising '+'/'-' and '/'/'._ before calling atob.
   try {
-    const raw = atob(config.encryption_key)
+    const normalised = config.encryption_key.replace(/-/g, '+').replace(/_/g, '/')
+    const raw = atob(normalised)
     if (raw.length !== 32) {
       setStatus(false, `Key must encode 32 bytes (got ${raw.length})`)
       return
     }
   } catch {
-    setStatus(false, 'Encryption key is not valid base64')
+    setStatus(false, 'Encryption key must be base64 (copy from the room URL fragment)')
     return
   }
 

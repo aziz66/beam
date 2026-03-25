@@ -24,6 +24,11 @@ export function setupClipboardHandler(onText, onImage, onFiles) {
 
     for (const item of items) {
       if (item.kind === 'file') {
+        // Don't intercept file pastes when the user has a text input focused
+        // (e.g. the passphrase modal) — it prevents the input from receiving text
+        // and silently sends the file to the room instead.
+        if (isInputFocused(e)) continue
+
         const file = item.getAsFile()
         if (!file) continue
 

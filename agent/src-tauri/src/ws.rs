@@ -57,10 +57,15 @@ pub async fn run_ws(
         // Build WS URL with room_code as a proper path segment (handles special chars).
         let url = Url::parse(&format!("{}/ws/", ws_url))
             .map(|mut u| {
-                u.path_segments_mut().ok().map(|mut s| { s.push(&config.room_code); });
+                if u.path_segments_mut().map(|mut s| s.push(&config.room_code)).is_err() {
+                    eprintln!("beam-agent: cannot-be-a-base URL, falling back to string concat");
+                }
                 u.to_string()
             })
-            .unwrap_or_else(|_| format!("{}/ws/{}", ws_url, config.room_code));
+            .unwrap_or_else(|e| {
+                eprintln!("beam-agent: failed to parse WS URL: {}", e);
+                format!("{}/ws/{}", ws_url, config.room_code)
+            });
 
         // Limit incoming WS frames to 10 MB — prevents a rogue server from
         // allocating unbounded memory by sending a giant single message.
@@ -195,9 +200,7 @@ pub async fn run_ws(
                                     }
                                 }
                                 Err(e) => {
-                                    #[cfg(debug_assertions)]
-                                    eprintln!("encrypt error: {}", e);
-                                    let _ = e;
+                                    eprintln!("beam-agent: encrypt error: {}", e);
                                 }
                             }
                         }

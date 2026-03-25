@@ -38,7 +38,32 @@ func Load() *Config {
 	flag.IntVar(&c.MaxRooms, "max-rooms", envInt("BEAM_MAX_ROOMS", 1000), "Maximum concurrent rooms")
 	flag.BoolVar(&c.TrustedProxy, "trusted-proxy", envBool("BEAM_TRUSTED_PROXY", false), "Trust X-Forwarded-For header (set only when behind a known reverse proxy)")
 	flag.Parse()
+	c.validate()
 	return c
+}
+
+// validate logs fatal errors for out-of-range values and clamps others to safe
+// defaults so the server never starts in a silently broken configuration.
+func (c *Config) validate() {
+	if c.Port < 1 || c.Port > 65535 {
+		log.Fatalf("config: port %d is out of range (1-65535)", c.Port)
+	}
+	if c.MaxRoomSize <= 0 {
+		log.Printf("config: max-room-size %d is invalid, resetting to 10", c.MaxRoomSize)
+		c.MaxRoomSize = 10
+	}
+	if c.DefaultTTL <= 0 {
+		log.Printf("config: default-ttl %v is invalid, resetting to 30m", c.DefaultTTL)
+		c.DefaultTTL = 30 * time.Minute
+	}
+	if c.GracePeriod < 0 {
+		log.Printf("config: grace-period %v is invalid, resetting to 5m", c.GracePeriod)
+		c.GracePeriod = 5 * time.Minute
+	}
+	if c.MaxRooms <= 0 {
+		log.Printf("config: max-rooms %d is invalid, resetting to 1000", c.MaxRooms)
+		c.MaxRooms = 1000
+	}
 }
 
 func envStr(key, fallback string) string {

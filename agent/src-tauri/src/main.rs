@@ -101,7 +101,7 @@ fn main() {
                 tauri::WindowUrl::App("index.html".into()),
             )
             .title("Beam Agent Settings")
-            .inner_size(420.0, 400.0)
+            .inner_size(420.0, 460.0)
             .resizable(false)
             .visible(false)
             .build()?;
