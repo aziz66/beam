@@ -8,9 +8,7 @@
   <meta name="theme-color" content="#0071e3">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="/manifest.json">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="/css/style.css?v=999">
+<link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
   <!-- Landing View -->
@@ -84,7 +82,7 @@
 
     <div class="room__header">
       <div class="room__header-left">
-        <a href="/" class="room__logo">Beam</a>
+        <span class="room__logo">Beam</span>
         <span id="header-room-code" class="room__code"></span>
         <span id="header-devices" class="room__devices"></span>
       </div>
@@ -157,7 +155,7 @@
   </div>
 
   <!-- Toast Container -->
-  <div id="toast-container" class="toast-container"></div>
+  <div id="toast-container" class="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
 
   <!-- QR Modal -->
   <div id="qr-modal" class="modal-backdrop">
@@ -167,6 +165,21 @@
       <div id="qr-modal-link" class="qr-modal__link"></div>
       <div class="modal__actions">
         <button id="qr-modal-close-btn" class="btn btn--secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Passphrase Modal (for joining passphrase-protected rooms) -->
+  <div id="passphrase-modal" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal__title">Room Protected</div>
+      <p style="margin:0 0 1rem;font-size:0.875rem;color:var(--text-secondary)">This room requires a passphrase to join.</p>
+      <div class="modal__field">
+        <label class="modal__label">Passphrase</label>
+        <input id="passphrase-input" class="input" type="password" placeholder="Enter passphrase..." autocomplete="current-password">
+      </div>
+      <div class="modal__actions">
+        <button id="passphrase-submit-btn" class="btn btn--primary">Join Room</button>
       </div>
     </div>
   </div>

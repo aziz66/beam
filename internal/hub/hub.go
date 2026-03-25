@@ -4,21 +4,21 @@ import (
 	"encoding/json"
 	"log"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
+	"github.com/aziz66/beam/internal/namegen"
 	"github.com/aziz66/beam/internal/protocol"
 	"github.com/aziz66/beam/internal/room"
 )
-
-var roomCodeRe = regexp.MustCompile(`^[a-z]+-[a-z]+-\d{2,3}$`)
 
 const (
 	maxMessageSize = 10 * 1024 * 1024 // 10MB
@@ -27,43 +27,127 @@ const (
 	rateBurst      = 60.0 // initial token bucket size
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		if origin == "" {
-			return true // non-browser clients (CLI)
-		}
-		u, err := url.Parse(origin)
-		if err != nil {
-			return false
-		}
-		return u.Host == r.Host
-	},
+func newUpgrader(trustedProxy bool) websocket.Upgrader {
+	return websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true // non-browser clients (CLI)
+			}
+			u, err := url.Parse(origin)
+			if err != nil {
+				return false
+			}
+			host := r.Host
+			// When behind a trusted reverse proxy, prefer X-Forwarded-Host so the
+			// origin check matches the public-facing hostname the browser used,
+			// not the internal upstream address that the proxy rewrites Host to.
+			if trustedProxy {
+				if fwd := r.Header.Get("X-Forwarded-Host"); fwd != "" {
+					host = strings.TrimSpace(strings.SplitN(fwd, ",", 2)[0])
+				}
+			}
+			return u.Host == host
+		},
+	}
 }
 
 const maxDeviceLabelLen = 64
 
-type Hub struct {
-	manager     *room.Manager
-	gracePeriod time.Duration
+type wsConnEntry struct {
+	count    int
+	windowAt time.Time
 }
 
-func New(manager *room.Manager, gracePeriod time.Duration) *Hub {
-	return &Hub{manager: manager, gracePeriod: gracePeriod}
+type Hub struct {
+	manager      *room.Manager
+	gracePeriod  time.Duration
+	trustedProxy bool
+	upgrader     websocket.Upgrader
+	wsConnMu     sync.Mutex
+	wsConnCount  map[string]*wsConnEntry
+}
+
+func New(manager *room.Manager, gracePeriod time.Duration, trustedProxy bool) *Hub {
+	return &Hub{
+		manager:      manager,
+		gracePeriod:  gracePeriod,
+		trustedProxy: trustedProxy,
+		upgrader:     newUpgrader(trustedProxy),
+		wsConnCount:  make(map[string]*wsConnEntry),
+	}
+}
+
+// wsConnAllowed limits WebSocket connections to 20 per IP per minute.
+func (h *Hub) wsConnAllowed(r *http.Request) bool {
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		ip = r.RemoteAddr
+	}
+	if h.trustedProxy {
+		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+			// Use the rightmost entry — it was appended by our trusted proxy
+			// and reflects the real client IP. The leftmost is client-controlled.
+			parts := strings.Split(fwd, ",")
+			ip = strings.TrimSpace(parts[len(parts)-1])
+		}
+	}
+
+	const maxPerMinute = 20
+	const maxTrackedIPs = 5000
+	now := time.Now()
+
+	h.wsConnMu.Lock()
+	defer h.wsConnMu.Unlock()
+
+	// Evict stale entries
+	for k, e := range h.wsConnCount {
+		if now.Sub(e.windowAt) > time.Minute {
+			delete(h.wsConnCount, k)
+		}
+	}
+	if len(h.wsConnCount) >= maxTrackedIPs {
+		// Stale entries were just evicted above; if still at capacity (many concurrent
+		// active IPs), prune down to 75% to preserve rate-limit state for existing IPs
+		// rather than wiping everything and letting attackers bypass the limiter.
+		target := maxTrackedIPs * 3 / 4
+		for k := range h.wsConnCount {
+			if len(h.wsConnCount) <= target {
+				break
+			}
+			delete(h.wsConnCount, k)
+		}
+	}
+
+	entry, ok := h.wsConnCount[ip]
+	if !ok || now.Sub(entry.windowAt) > time.Minute {
+		h.wsConnCount[ip] = &wsConnEntry{count: 1, windowAt: now}
+		return true
+	}
+	if entry.count >= maxPerMinute {
+		return false
+	}
+	entry.count++
+	return true
 }
 
 func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 	// Extract room code from URL path: /ws/{roomCode}
 	path := strings.TrimPrefix(r.URL.Path, "/ws/")
 	roomCode := strings.TrimSuffix(path, "/")
-	if roomCode == "" || !roomCodeRe.MatchString(roomCode) {
+	if roomCode == "" || !namegen.Validate(roomCode) {
 		http.Error(w, "invalid room code", http.StatusBadRequest)
 		return
 	}
 
-	conn, err := upgrader.Upgrade(w, r, nil)
+	if !h.wsConnAllowed(r) {
+		http.Error(w, "too many connections", http.StatusTooManyRequests)
+		return
+	}
+
+	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("websocket upgrade failed: %v", err)
 		return
@@ -77,13 +161,29 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 func (h *Hub) handleConnection(conn *websocket.Conn, deviceID, roomCode string) {
 	conn.SetReadLimit(maxMessageSize)
-	conn.SetReadDeadline(time.Now().Add(pongWait))
-	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(pongWait))
-		return nil
-	})
 
-	// Get or create the room
+	// Read the join message with a short deadline BEFORE allocating a room slot.
+	// This prevents exhausting MaxRooms by opening connections without ever joining.
+	if err := conn.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		conn.Close()
+		return
+	}
+
+	_, firstMsg, err := conn.ReadMessage()
+	if err != nil {
+		conn.Close()
+		return
+	}
+	var joinEnv protocol.Envelope
+	var joinPayload protocol.JoinPayload
+	if err := json.Unmarshal(firstMsg, &joinEnv); err != nil || joinEnv.Type != protocol.TypeJoin {
+		h.sendError(conn, "protocol_error", "expected join message")
+		conn.Close()
+		return
+	}
+	joinEnv.ParsePayload(&joinPayload) // best-effort; empty label is fine
+
+	// Now get or create the room (slot only consumed after client proved it can talk).
 	rm, err := h.manager.GetOrCreateRoom(roomCode)
 	if err != nil {
 		h.sendError(conn, "room_full", err.Error())
@@ -91,13 +191,57 @@ func (h *Hub) handleConnection(conn *websocket.Conn, deviceID, roomCode string) 
 		return
 	}
 
-	client := room.NewClient(deviceID, "", conn)
+	// If we return early (passphrase fail, AddClient fail) before the client is
+	// registered, a freshly-created non-pinned room could linger empty until the
+	// next cleanup tick (~60s). Schedule a grace timer so it is reaped promptly.
+	clientAdded := false
+	defer func() {
+		if !clientAdded && rm.IsEmpty() && !rm.Pinned {
+			rm.StartGraceTimerIfNone(h.gracePeriod, func() {
+				if rm.IsEmpty() {
+					h.manager.DeleteRoomIfMatch(roomCode, rm)
+				}
+			})
+		}
+	}()
+
+	// Enforce passphrase for rooms that have one (pinned rooms only).
+	// Use the semaphore-gated ComparePassphrase so concurrent WS joins cannot
+	// saturate all CPU cores with bcrypt work.
+	if rm.Pinned && rm.Passphrase != "" {
+		if err := room.ComparePassphrase(rm.Passphrase, joinPayload.Passphrase); err != nil {
+			h.sendError(conn, "auth_required", "invalid passphrase")
+			conn.Close()
+			return
+		}
+	}
+
+	// Reset deadline to full pong-wait for normal operation.
+	if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
+		conn.Close()
+		return
+	}
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
+	deviceLabel := ""
+	if joinPayload.DeviceLabel != "" {
+		deviceLabel = sanitizeLabel(joinPayload.DeviceLabel)
+		if len([]rune(deviceLabel)) > maxDeviceLabelLen {
+			deviceLabel = string([]rune(deviceLabel)[:maxDeviceLabelLen])
+		}
+	}
+
+	client := room.NewClient(deviceID, deviceLabel, conn)
 
 	if !rm.AddClient(client) {
 		h.sendError(conn, "room_full", "room is at capacity")
 		conn.Close()
 		return
 	}
+	clientAdded = true
 
 	rm.CancelGraceTimer()
 
@@ -121,8 +265,10 @@ func (h *Hub) handleConnection(conn *websocket.Conn, deviceID, roomCode string) 
 	// Read pump (blocks until disconnect)
 	h.readPump(conn, client, rm)
 
-	// Cleanup on disconnect
+	// Cleanup on disconnect — remove from room first so no new sends reach this
+	// client's (now-closing) channel, then signal WritePump to drain and exit.
 	rm.RemoveClient(deviceID)
+	client.Close()
 	log.Printf("disconnected: device=%s room=%s", deviceID, roomCode)
 
 	h.broadcastDeviceList(rm)
@@ -130,7 +276,7 @@ func (h *Hub) handleConnection(conn *websocket.Conn, deviceID, roomCode string) 
 	if rm.IsEmpty() && !rm.Pinned {
 		rm.StartGraceTimer(h.gracePeriod, func() {
 			if rm.IsEmpty() {
-				h.manager.DeleteRoom(roomCode)
+				h.manager.DeleteRoomIfMatch(roomCode, rm)
 			}
 		})
 	}
@@ -142,6 +288,9 @@ func (h *Hub) readPump(conn *websocket.Conn, client *room.Client, rm *room.Room)
 	// Token bucket rate limiter (per-connection, single goroutine — no mutex needed)
 	tokens := rateBurst
 	lastRefill := time.Now()
+	// Throttle rate-limit log messages to at most one per second per connection
+	// so a flooding client cannot fill the disk with log entries.
+	var lastRateLimitLog time.Time
 
 	for {
 		_, message, err := conn.ReadMessage()
@@ -157,7 +306,10 @@ func (h *Hub) readPump(conn *websocket.Conn, client *room.Client, rm *room.Room)
 		tokens = math.Min(rateBurst, tokens+now.Sub(lastRefill).Seconds()*rateMsgPerSec)
 		lastRefill = now
 		if tokens < 1 {
-			log.Printf("rate limit exceeded: device=%s, dropping message", client.DeviceID)
+			if time.Since(lastRateLimitLog) > time.Second {
+				log.Printf("rate limit exceeded: device=%s, dropping messages", client.DeviceID)
+				lastRateLimitLog = time.Now()
+			}
 			continue
 		}
 		tokens--
@@ -184,30 +336,50 @@ func (h *Hub) routeMessage(env *protocol.Envelope, raw []byte, sender *room.Clie
 		}
 		if payload.DeviceLabel != "" {
 			label := sanitizeLabel(payload.DeviceLabel)
-			if len(label) > maxDeviceLabelLen {
-				label = label[:maxDeviceLabelLen]
+			if len([]rune(label)) > maxDeviceLabelLen {
+				label = string([]rune(label)[:maxDeviceLabelLen])
 			}
-			sender.DeviceLabel = label
+			sender.SetDeviceLabel(label)
 			h.broadcastDeviceList(rm)
 		}
 
 	case protocol.TypeItem:
 		// Re-marshal with server-set fields
 		data := h.remarshal(env)
-		rm.StoreItem(data, rm.DefaultTTL)
+		if data == nil {
+			return
+		}
+		ttl := rm.DefaultTTL
+		var itemPayload protocol.ItemPayload
+		if env.ParsePayload(&itemPayload) == nil && itemPayload.TTL > 0 {
+			clientTTL := time.Duration(itemPayload.TTL) * time.Second
+			if clientTTL < rm.DefaultTTL {
+				ttl = clientTTL
+			}
+		}
+		rm.StoreItem(data, ttl)
 		h.relayToRoom(data, sender, rm)
 
 	case protocol.TypeFileMeta, protocol.TypeFileComplete, protocol.TypeFileCancel:
 		data := h.remarshal(env)
+		if data == nil {
+			return
+		}
 		h.relayToRoom(data, sender, rm)
 
 	case protocol.TypeFileChunk:
 		data := h.remarshal(env)
+		if data == nil {
+			return
+		}
 		h.relayToRoom(data, sender, rm)
 
 	case protocol.TypeSignalOffer, protocol.TypeSignalAnswer, protocol.TypeSignalICE:
 		if env.TargetID != "" {
 			data := h.remarshal(env)
+			if data == nil {
+				return
+			}
 			h.relayToDevice(data, env.TargetID, rm)
 		}
 
@@ -267,7 +439,7 @@ func (h *Hub) broadcastDeviceList(rm *room.Room) {
 	for _, c := range clients {
 		devices = append(devices, protocol.DeviceInfo{
 			DeviceID:    c.DeviceID,
-			DeviceLabel: c.DeviceLabel,
+			DeviceLabel: c.GetDeviceLabel(),
 			JoinedAt:    c.JoinedAt.UnixMilli(),
 		})
 	}
@@ -331,5 +503,7 @@ func (h *Hub) sendError(conn *websocket.Conn, code, message string) {
 	if err != nil {
 		return
 	}
-	conn.WriteMessage(websocket.TextMessage, data)
+	if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+		log.Printf("sendError write failed: %v", err)
+	}
 }

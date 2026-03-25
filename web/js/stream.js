@@ -1,14 +1,18 @@
 import { encrypt, decrypt, encryptBytes } from './crypto.js'
-import { renderFileProgress } from './ui.js'
+import { renderFileProgress, removeFeedCard } from './ui.js'
 
 const CHUNK_SIZE = 64 * 1024 // 64KB
 const TRANSFER_TIMEOUT = 5 * 60 * 1000 // 5 minutes
+// Cap peer-supplied total_chunks to prevent memory exhaustion (~1 GB max).
+const MAX_TOTAL_CHUNKS = 16384
 
 // Active transfers: fileId -> { chunks[], meta, received }
 const incomingTransfers = new Map()
 
 export async function sendFile(file, key, transport, deviceLabel) {
-  const fileId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)
+  const fileId = typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('')
   const totalChunks = Math.ceil(file.size / CHUNK_SIZE)
 
   // Encrypt file name
@@ -29,43 +33,57 @@ export async function sendFile(file, key, transport, deviceLabel) {
     ts: Date.now()
   })
 
-  const buffer = await file.arrayBuffer()
+  try {
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE
+      const end = Math.min(start + CHUNK_SIZE, file.size)
+      const chunk = new Uint8Array(await file.slice(start, end).arrayBuffer())
+      const chunkCrypto = encryptBytes(chunk, key)
 
-  for (let i = 0; i < totalChunks; i++) {
-    const start = i * CHUNK_SIZE
-    const end = Math.min(start + CHUNK_SIZE, file.size)
-    const chunk = new Uint8Array(buffer.slice(start, end))
-    const chunkCrypto = encryptBytes(chunk, key)
+      transport.send({
+        type: 'file_chunk',
+        payload: {
+          file_id: fileId,
+          index: i,
+          encrypted_data: chunkCrypto.encrypted,
+          nonce: chunkCrypto.nonce
+        },
+        ts: Date.now()
+      })
+
+      renderFileProgress(fileId, file.name, file.size, (i + 1) / totalChunks)
+
+      // Small delay to avoid flooding
+      if (i % 10 === 9) {
+        await new Promise(r => setTimeout(r, 0))
+      }
+    }
 
     transport.send({
-      type: 'file_chunk',
-      payload: {
-        file_id: fileId,
-        index: i,
-        encrypted_data: chunkCrypto.encrypted,
-        nonce: chunkCrypto.nonce
-      },
+      type: 'file_complete',
+      payload: { file_id: fileId },
       ts: Date.now()
     })
-
-    renderFileProgress(fileId, file.name, file.size, (i + 1) / totalChunks)
-
-    // Small delay to avoid flooding
-    if (i % 10 === 9) {
-      await new Promise(r => setTimeout(r, 0))
-    }
+  } catch (err) {
+    transport.send({
+      type: 'file_cancel',
+      payload: { file_id: fileId },
+      ts: Date.now()
+    })
+    throw err
   }
-
-  transport.send({
-    type: 'file_complete',
-    payload: { file_id: fileId },
-    ts: Date.now()
-  })
 
   return fileId
 }
 
 export function handleFileMeta(payload, key) {
+  // Reject unreasonable values from untrusted peers before allocating memory.
+  if (!payload.total_chunks || payload.total_chunks < 1 || payload.total_chunks > MAX_TOTAL_CHUNKS) {
+    console.warn('stream: rejected file_meta with invalid total_chunks', payload.total_chunks)
+    return
+  }
+  const safeSize = (typeof payload.size === 'number' && payload.size >= 0) ? payload.size : 0
+
   let fileName = 'unknown'
   try {
     fileName = new TextDecoder().decode(decrypt(payload.encrypted_name, payload.nonce, key))
@@ -73,24 +91,45 @@ export function handleFileMeta(payload, key) {
     fileName = 'encrypted-file'
   }
 
-  incomingTransfers.set(payload.file_id, {
-    meta: payload,
-    fileName,
-    chunks: new Array(payload.total_chunks),
-    received: 0
-  })
-
-  // Auto-clean abandoned transfers (sender disconnected before sending file_complete)
-  setTimeout(() => {
-    incomingTransfers.delete(payload.file_id)
+  const cleanupTimer = setTimeout(() => {
+    if (incomingTransfers.has(payload.file_id)) {
+      incomingTransfers.delete(payload.file_id)
+      removeFeedCard(payload.file_id)
+    }
   }, TRANSFER_TIMEOUT)
 
-  renderFileProgress(payload.file_id, fileName, payload.size, 0)
+  incomingTransfers.set(payload.file_id, {
+    meta: { ...payload, size: safeSize },
+    fileName,
+    chunks: new Array(payload.total_chunks),
+    received: 0,
+    cleanupTimer
+  })
+
+  renderFileProgress(payload.file_id, fileName, safeSize, 0)
 }
 
 export function handleFileChunk(payload, key) {
   const transfer = incomingTransfers.get(payload.file_id)
   if (!transfer) return
+
+  // Reject out-of-range indices — a malicious peer could send index=9999999 and
+  // cause a huge sparse array, consuming memory without advancing the transfer.
+  if (payload.index < 0 || payload.index >= transfer.meta.total_chunks) return
+
+  // Ignore duplicate chunks (network retransmit) — they would corrupt received count
+  if (transfer.chunks[payload.index] !== undefined) return
+
+  // Reset the stale-transfer cleanup timer on each new chunk so that a slow but
+  // active transfer is not abandoned partway through (the 5-minute window is
+  // per-chunk-gap, not total transfer time).
+  clearTimeout(transfer.cleanupTimer)
+  transfer.cleanupTimer = setTimeout(() => {
+    if (incomingTransfers.has(payload.file_id)) {
+      incomingTransfers.delete(payload.file_id)
+      removeFeedCard(payload.file_id)
+    }
+  }, TRANSFER_TIMEOUT)
 
   try {
     const decrypted = decrypt(payload.encrypted_data, payload.nonce, key)
@@ -111,6 +150,16 @@ export function handleFileChunk(payload, key) {
 export function handleFileComplete(payload, onComplete) {
   const transfer = incomingTransfers.get(payload.file_id)
   if (!transfer) return
+
+  clearTimeout(transfer.cleanupTimer)
+
+  // Verify all chunks arrived — missing chunks produce a silently-truncated file
+  if (transfer.received !== transfer.meta.total_chunks) {
+    console.error(`file_complete: received ${transfer.received}/${transfer.meta.total_chunks} chunks — discarding incomplete file`)
+    incomingTransfers.delete(payload.file_id)
+    removeFeedCard(payload.file_id)
+    return
+  }
 
   // Combine chunks
   const totalSize = transfer.chunks.reduce((sum, c) => sum + (c ? c.length : 0), 0)
@@ -134,7 +183,8 @@ export function handleFileComplete(payload, onComplete) {
       file_id: payload.file_id,
       file_name: transfer.fileName,
       file_size: transfer.meta.size,
-      blob_url: blobUrl
+      blob_url: blobUrl,
+      device_label: transfer.meta.device_label || ''
     })
   }
 }

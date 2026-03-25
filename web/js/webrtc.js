@@ -1,3 +1,9 @@
+// ICE / STUN configuration.
+// Privacy note: during ICE candidate gathering the browser contacts each STUN
+// server, which means those servers (Google, Cloudflare, stunprotocol.org) see
+// the client's public IP address. This is inherent to WebRTC NAT traversal.
+// Self-hosters who want to avoid leaking IPs to third parties should replace
+// these with a STUN/TURN server they control.
 const rtcConfig = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -61,6 +67,14 @@ export class WebRTCManager {
   }
 
   _createPeerConnection() {
+    // Close any existing connection before creating a new one
+    if (this.pc) {
+      this.pc.onicecandidate = null
+      this.pc.onconnectionstatechange = null
+      this.pc.ondatachannel = null
+      this.pc.close()
+      this.pc = null
+    }
     this.pc = new RTCPeerConnection(rtcConfig)
 
     this.pc.onicecandidate = (event) => {
@@ -116,39 +130,52 @@ export class WebRTCManager {
 
   async _handleOffer(env) {
     const payload = env.payload
+
+    // Reject offers from devices other than the known peer — prevents a third
+    // device in the room from hijacking or disrupting an established P2P session.
+    if (this.peerDeviceId && env.device_id !== this.peerDeviceId) {
+      console.warn('webrtc: ignoring offer from unexpected peer', env.device_id)
+      return
+    }
     this.peerDeviceId = env.device_id
 
     this._createPeerConnection()
 
-    await this.pc.setRemoteDescription({
-      type: 'offer',
-      sdp: payload.sdp
-    })
+    try {
+      await this.pc.setRemoteDescription({ type: 'offer', sdp: payload.sdp })
+      const answer = await this.pc.createAnswer()
+      await this.pc.setLocalDescription(answer)
 
-    const answer = await this.pc.createAnswer()
-    await this.pc.setLocalDescription(answer)
-
-    this.transport.send({
-      type: 'signal_answer',
-      payload: { sdp: this.pc.localDescription.sdp },
-      target_id: this.peerDeviceId,
-      ts: Date.now()
-    })
+      this.transport.send({
+        type: 'signal_answer',
+        payload: { sdp: this.pc.localDescription.sdp },
+        target_id: this.peerDeviceId,
+        ts: Date.now()
+      })
+    } catch (err) {
+      console.error('webrtc answer failed:', err)
+      this._cleanup()
+    }
   }
 
   async _handleAnswer(env) {
     if (!this.pc) return
-    await this.pc.setRemoteDescription({
-      type: 'answer',
-      sdp: env.payload.sdp
-    })
+    try {
+      await this.pc.setRemoteDescription({ type: 'answer', sdp: env.payload.sdp })
+    } catch (err) {
+      console.error('webrtc set answer failed:', err)
+      this._cleanup()
+    }
   }
 
   async _handleICE(env) {
-    if (!this.pc) return
+    // Capture pc before any await — _cleanup() may null this.pc while we're
+    // awaiting addIceCandidate, causing an uncaught rejection on a closed connection.
+    const pc = this.pc
+    if (!pc) return
     try {
       const candidate = JSON.parse(env.payload.candidate)
-      await this.pc.addIceCandidate(candidate)
+      await pc.addIceCandidate(candidate)
     } catch (err) {
       console.error('webrtc ice failed:', err)
     }
@@ -168,10 +195,16 @@ export class WebRTCManager {
 
   _cleanup() {
     if (this.dataChannel) {
+      this.dataChannel.onopen = null
+      this.dataChannel.onclose = null
+      this.dataChannel.onmessage = null
       this.dataChannel.close()
       this.dataChannel = null
     }
     if (this.pc) {
+      this.pc.onicecandidate = null
+      this.pc.onconnectionstatechange = null
+      this.pc.ondatachannel = null
       this.pc.close()
       this.pc = null
     }

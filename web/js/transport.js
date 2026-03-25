@@ -17,6 +17,14 @@ export class Transport {
     this.watchdogTimer = null
     this.state = 'disconnected'
     this.intentionalClose = false
+    this._iosListenersRegistered = false
+
+    // Bind once so the same function reference is used for add/remove
+    this._onVisibility = () => {
+      if (document.visibilityState === 'visible') this._forceReconnect()
+    }
+    this._onFocus = () => this._forceReconnect()
+    this._onPageShow = (e) => { if (e.persisted) this._forceReconnect() }
   }
 
   connect(roomCode) {
@@ -29,39 +37,30 @@ export class Transport {
     // before the WebSocket handshake completes. The socket gets stuck in CONNECTING
     // state indefinitely — onclose/onerror never fire, so auto-retry never kicks in.
     //
-    // We register multiple events to catch every way iOS can bring a page to the
-    // foreground, and force a fresh connection whenever we detect we're visible
-    // but not connected.
-    const forceReconnect = () => {
-      if (!this.url || this.intentionalClose) return
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) return
-      clearTimeout(this.reconnectTimer)
-      clearTimeout(this.watchdogTimer)
-      this.reconnectDelay = RECONNECT_BASE
-      if (this.ws) {
-        this.ws.onopen = null
-        this.ws.onclose = null
-        this.ws.onerror = null
-        this.ws.onmessage = null
-        this.ws.close()
-        this.ws = null
-      }
-      this._connect()
+    // Register once — guards against connect() being called multiple times.
+    if (!this._iosListenersRegistered) {
+      this._iosListenersRegistered = true
+      document.addEventListener('visibilitychange', this._onVisibility)
+      window.addEventListener('focus', this._onFocus)
+      window.addEventListener('pageshow', this._onPageShow)
     }
+  }
 
-    // visibilitychange: page moved to foreground
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') forceReconnect()
-    })
-
-    // focus: window/tab received focus (complements visibilitychange on some iOS versions)
-    window.addEventListener('focus', forceReconnect)
-
-    // pageshow with persisted=true: Safari restored page from bfcache (back/forward),
-    // visibilitychange does NOT fire in this case
-    window.addEventListener('pageshow', (e) => {
-      if (e.persisted) forceReconnect()
-    })
+  _forceReconnect() {
+    if (!this.url || this.intentionalClose) return
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) return
+    clearTimeout(this.reconnectTimer)
+    clearTimeout(this.watchdogTimer)
+    this.reconnectDelay = RECONNECT_BASE
+    if (this.ws) {
+      this.ws.onopen = null
+      this.ws.onclose = null
+      this.ws.onerror = null
+      this.ws.onmessage = null
+      this.ws.close()
+      this.ws = null
+    }
+    this._connect()
   }
 
   _connect() {
@@ -134,6 +133,9 @@ export class Transport {
     this.ws.onclose = () => {
       clearTimeout(this.watchdogTimer)
       this._stopPing()
+      // Null out ws before scheduling reconnect so _forceReconnect (which may
+      // fire concurrently from visibilitychange) cannot open a second connection.
+      this.ws = null
       if (this.intentionalClose) {
         this.state = 'disconnected'
         this._emit('disconnected')
@@ -154,6 +156,9 @@ export class Transport {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(data)
     } else {
+      if (this.queue.length >= 200) {
+        this.queue.shift() // drop oldest to prevent unbounded growth
+      }
       this.queue.push(data)
     }
   }
@@ -168,11 +173,23 @@ export class Transport {
     clearTimeout(this.reconnectTimer)
     clearTimeout(this.watchdogTimer)
     if (this.ws) this.ws.close()
+    if (this._iosListenersRegistered) {
+      document.removeEventListener('visibilitychange', this._onVisibility)
+      window.removeEventListener('focus', this._onFocus)
+      window.removeEventListener('pageshow', this._onPageShow)
+      this._iosListenersRegistered = false
+    }
   }
 
   _flushQueue() {
-    while (this.queue.length > 0 && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(this.queue.shift())
+    while (this.queue.length > 0 && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      const msg = this.queue[0]
+      try {
+        this.ws.send(msg)
+        this.queue.shift()
+      } catch {
+        break
+      }
     }
   }
 
@@ -189,6 +206,9 @@ export class Transport {
     this.pingTimer = setInterval(() => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.send({ type: 'ping', payload: null, ts: Date.now() })
+        // Clear any prior pong timer before setting a new one — without this,
+        // the overwritten timer becomes a ghost that fires and closes the socket.
+        clearTimeout(this.pongTimer)
         this.pongTimer = setTimeout(() => {
           if (this.ws) this.ws.close()
         }, PONG_TIMEOUT)

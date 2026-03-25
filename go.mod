@@ -1,6 +1,6 @@
 module github.com/aziz66/beam
 
-go 1.23.7
+go 1.23.0
 
 require (
 	github.com/dgraph-io/badger/v4 v4.9.1

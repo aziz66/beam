@@ -34,10 +34,8 @@ cd agent && cargo tauri build
 
 - `main.go` — Entry point, flag parsing, starts server, embeds `web/` via `go:embed`
 - `internal/config/` — Config struct, env var + flag parsing (all `BEAM_*` prefixed)
-- `internal/hub/` — WebSocket connection manager, routes messages to rooms
+- `internal/hub/` — WebSocket connection manager, routes messages to rooms, enforces passphrase on join
 - `internal/room/` — Room lifecycle (create/join/leave/cleanup), TTL, grace periods. BadgerDB store for pinned rooms
-- `internal/relay/` — Message forwarding logic: broadcast items, stream file chunks, targeted WebRTC signaling
-- `internal/signaling/` — WebRTC SDP/ICE relay (signaling only, no TURN)
 - `internal/protocol/` — Wire protocol message types (JSON envelopes over WebSocket)
 - `internal/namegen/` — Room code generator (`adjective-noun-NN` format)
 - `internal/api/` — REST endpoints under `/api/`

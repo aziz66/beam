@@ -6,41 +6,75 @@ const connectBtn = document.getElementById('connect-btn')
 const statusDot = document.getElementById('status-dot')
 const statusText = document.getElementById('status-text')
 
+function setStatus(connected, message) {
+  statusDot.className = connected
+    ? 'status-dot status-dot--connected'
+    : 'status-dot status-dot--disconnected'
+  statusText.textContent = message
+}
+
+function invoke(cmd, args) {
+  return window.__TAURI__.invoke(cmd, args || {})
+}
+
+window.addEventListener('load', () => {
+  if (!window.__TAURI__?.invoke) {
+    setStatus(false, 'ERROR: No IPC bridge')
+    return
+  }
+  setStatus(false, 'Ready')
+
+  // Pre-fill form from saved config
+  invoke('get_config')
+    .then((config) => {
+      if (!config) return
+      if (config.server_url) serverUrl.value = config.server_url
+      if (config.room_code) roomCode.value = config.room_code
+      if (config.encryption_key) encryptionKey.value = config.encryption_key
+      if (typeof config.auto_sync === 'boolean') autoSync.checked = config.auto_sync
+    })
+    .catch(() => {})
+})
+
 connectBtn.addEventListener('click', () => {
   const config = {
-    server_url: serverUrl.value,
-    room_code: roomCode.value,
-    encryption_key: encryptionKey.value,
+    server_url: serverUrl.value.trim(),
+    room_code: roomCode.value.trim(),
+    encryption_key: encryptionKey.value.trim(),
     auto_sync: autoSync.checked
   }
 
   if (!config.room_code || !config.encryption_key) {
-    statusText.textContent = 'Room code and key required'
+    setStatus(false, 'Room code and key required')
     return
   }
 
-  // Send config to Tauri backend
-  if (window.__TAURI__) {
-    window.__TAURI__.invoke('connect_room', { config })
-      .then(() => {
-        statusDot.className = 'status-dot status-dot--connected'
-        statusText.textContent = 'Connected'
-      })
-      .catch((err) => {
-        statusText.textContent = 'Error: ' + err
-      })
-  } else {
-    statusText.textContent = 'Not running in Tauri'
+  // Validate key is 32-byte base64 before even attempting to connect
+  try {
+    const raw = atob(config.encryption_key)
+    if (raw.length !== 32) {
+      setStatus(false, `Key must encode 32 bytes (got ${raw.length})`)
+      return
+    }
+  } catch {
+    setStatus(false, 'Encryption key is not valid base64')
+    return
   }
+
+  setStatus(false, 'Connecting...')
+
+  invoke('connect_room', { config })
+    .then(() => {}) // status updates via polling
+    .catch((err) => setStatus(false, 'Error: ' + JSON.stringify(err)))
 })
 
-// Listen for status updates from backend
-if (window.__TAURI__) {
-  window.__TAURI__.event.listen('connection-status', (event) => {
-    const connected = event.payload === 'connected'
-    statusDot.className = connected
-      ? 'status-dot status-dot--connected'
-      : 'status-dot status-dot--disconnected'
-    statusText.textContent = connected ? 'Connected' : 'Disconnected'
-  })
-}
+// Poll connection status every second — skip when window is not visible
+setInterval(() => {
+  if (document.visibilityState !== 'visible') return
+  invoke('get_status')
+    .then((status) => {
+      const connected = status === 'connected'
+      setStatus(connected, connected ? 'Connected' : status)
+    })
+    .catch(() => {})
+}, 1000)

@@ -1,4 +1,4 @@
-import { formatTimeAgo, formatBytes, renderTextContent, renderLinkPreview, highlightCode, detectLanguage } from './preview.js'
+import { formatBytes, renderTextContent, renderLinkPreview, highlightCode, detectLanguage } from './preview.js'
 import { copyToClipboard } from './clipboard.js'
 import { renderPdfThumbnail } from './pdf-thumbnail.js'
 
@@ -56,7 +56,7 @@ function applyFilter() {
 export function renderItem(item) {
   feedEmpty.style.display = 'none'
 
-  const isMine = (item.device_label || '').endsWith('(you)')
+  const isMine = item.is_mine === true
 
   const card = document.createElement('div')
   card.className = 'item' + (isMine ? ' item--mine' : ' item--peer')
@@ -88,7 +88,7 @@ export function renderItem(item) {
     case 'code': {
       content.className += ' item__content--code'
       const lang = detectLanguage(item.text)
-      content.innerHTML = highlightCode(item.text, lang)
+      content.appendChild(highlightCode(item.text, lang))
       break
     }
     case 'image':
@@ -131,8 +131,17 @@ export function renderItem(item) {
         content.innerHTML = `<strong>${escapeHtml(item.file_name || 'File')}</strong> <span style="color:var(--text-secondary)">${formatBytes(item.file_size || 0)}</span>`
       }
       break
-    default:
-      content.innerHTML = renderTextContent(item.text || '')
+    default: {
+      content.appendChild(renderTextContent(item.text || ''))
+      const moreEl = content.querySelector('.item__more')
+      if (moreEl) {
+        moreEl.addEventListener('click', (e) => {
+          e.stopPropagation()
+          content.textContent = item.text || ''
+        })
+      }
+      break
+    }
   }
 
   card.appendChild(content)
@@ -216,6 +225,10 @@ export function renderItem(item) {
 
   wrapper.appendChild(actions)
 
+  // Store blob URL on wrapper so _removeFeedItem can revoke it even for non-media
+  // files where the URL lives only in a click-handler closure (not a DOM src attr).
+  if (item.blob_url) wrapper.dataset.blobUrl = item.blob_url
+
   // Hide if it doesn't match the active filter
   if (activeFilter !== 'all' && wrapper.querySelector('.item').dataset.kind !== activeFilter) {
     wrapper.style.display = 'none'
@@ -223,8 +236,45 @@ export function renderItem(item) {
 
   feed.appendChild(wrapper)
 
+  // Cap feed size — remove oldest items to avoid unbounded DOM growth
+  const MAX_FEED_ITEMS = 200
+  const allWrappers = feed.querySelectorAll('.item-wrapper')
+  if (allWrappers.length > MAX_FEED_ITEMS) {
+    const toRemove = allWrappers.length - MAX_FEED_ITEMS
+    for (let i = 0; i < toRemove; i++) {
+      _removeFeedItem(allWrappers[i])
+    }
+  }
+
   if (autoScroll) {
     feed.scrollTop = feed.scrollHeight
+  }
+}
+
+function _removeFeedItem(wrapper) {
+  // Abort any pending preview fetches
+  wrapper.querySelectorAll('div').forEach(el => {
+    if (typeof el._abortFetch === 'function') el._abortFetch()
+  })
+  // Revoke any blob URLs held by this item before removing from DOM
+  wrapper.querySelectorAll('img[src], video[src], audio[src], embed[src]').forEach(el => {
+    if (el.src && el.src.startsWith('blob:')) {
+      URL.revokeObjectURL(el.src)
+    }
+  })
+  // Revoke the wrapper-level blob URL (non-media files whose URL is only in a
+  // click-handler closure and never appears as a DOM element src attribute).
+  if (wrapper.dataset.blobUrl) {
+    URL.revokeObjectURL(wrapper.dataset.blobUrl)
+  }
+  wrapper.remove()
+}
+
+export function removeFeedCard(fileId) {
+  const card = feed.querySelector(`[data-file-id="${fileId}"]`)
+  if (card) {
+    const wrapper = card.closest('.item-wrapper') || card
+    _removeFeedItem(wrapper) // use _removeFeedItem to revoke blob URLs
   }
 }
 
@@ -276,7 +326,7 @@ export function completeFileTransfer(fileId, item) {
   const finalKind = item.kind || 'file'
   card.dataset.kind = finalKind
 
-  const isMine = (item.device_label || '').endsWith('(you)')
+  const isMine = item.is_mine === true
   card.className = 'item' + (isMine ? ' item--mine' : ' item--peer')
 
   // Rebuild the card content in-place
@@ -392,6 +442,9 @@ export function completeFileTransfer(fileId, item) {
 
   wrapper.appendChild(actions)
 
+  // Store blob URL on wrapper for cleanup (non-media files have no DOM src attr)
+  if (item.blob_url) wrapper.dataset.blobUrl = item.blob_url
+
   // Respect active filter
   if (activeFilter !== 'all' && finalKind !== activeFilter) {
     wrapper.style.display = 'none'
@@ -404,13 +457,18 @@ export function completeFileTransfer(fileId, item) {
 
 async function renderPdfThumbnailInto(container, blobUrl, fileName) {
   const thumbUrl = await renderPdfThumbnail(blobUrl)
-  if (thumbUrl) {
-    const img = document.createElement('img')
-    img.className = 'item__image item__pdf-thumb'
-    img.src = thumbUrl
-    img.alt = fileName || 'PDF page 1'
-    container.appendChild(img)
+  if (!thumbUrl) return
+  // If the container was replaced or removed while awaiting the render, the blob
+  // URL would leak permanently (no DOM element to find during cleanup). Revoke it.
+  if (!document.contains(container)) {
+    URL.revokeObjectURL(thumbUrl)
+    return
   }
+  const img = document.createElement('img')
+  img.className = 'item__image item__pdf-thumb'
+  img.src = thumbUrl
+  img.alt = fileName || 'PDF page 1'
+  container.appendChild(img)
 }
 
 function flashCard(card) {
@@ -475,6 +533,7 @@ export function updateDeviceList(devices) {
 export function updateStatusBar(state) {
   const bar = document.getElementById('status-bar')
   bar.className = 'status-bar'
+  bar.style.display = ''
   if (state === 'disconnected') {
     bar.classList.add('status-bar--disconnected')
     bar.textContent = 'Disconnected'

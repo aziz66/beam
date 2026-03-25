@@ -48,11 +48,11 @@ func main() {
 	defer manager.Close()
 
 	// Initialize hub
-	h := hub.New(manager, cfg.GracePeriod)
+	h := hub.New(manager, cfg.GracePeriod, cfg.TrustedProxy)
 
 	// Initialize API
 	previewer := preview.New()
-	apiHandler := api.New(manager, previewer)
+	apiHandler := api.New(manager, previewer, cfg.TrustedProxy)
 
 	// Static files from embedded FS
 	webContent, err := fs.Sub(webFS, "web")
@@ -85,12 +85,20 @@ func main() {
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	tlsEnabled := cfg.TLSCert != "" && cfg.TLSKey != ""
 	srv := &http.Server{
-		Addr:         addr,
-		Handler:      securityHeaders(mux),
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:    addr,
+		Handler: securityHeaders(mux, tlsEnabled),
+		// ReadTimeout covers non-WebSocket HTTP requests; WebSocket connections
+		// hijack the conn and are not subject to it after upgrade.
+		ReadTimeout: 15 * time.Second,
+		// WriteTimeout must be 0 for WebSocket connections: the net/http server
+		// applies WriteTimeout to the entire hijacked connection lifetime, so a
+		// non-zero value would kill all WebSocket connections at the deadline.
+		// Per-write deadlines are enforced inside WritePump via SetWriteDeadline.
+		WriteTimeout:   0,
+		IdleTimeout:    60 * time.Second,
+		MaxHeaderBytes: 64 << 10, // 64KB — well above any legitimate header
 	}
 
 	// Graceful shutdown
@@ -123,16 +131,20 @@ func main() {
 	log.Println("beam server stopped")
 }
 
-func securityHeaders(next http.Handler) http.Handler {
+func securityHeaders(next http.Handler, tlsEnabled bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if tlsEnabled {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("Content-Security-Policy",
 			"default-src 'self'; "+
 				"script-src 'self'; "+
-				"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "+
-				"font-src 'self' https://fonts.gstatic.com; "+
+				"style-src 'self' 'unsafe-inline'; "+
+				"font-src 'self'; "+
 				"connect-src 'self' ws: wss:; "+
 				"img-src 'self' blob: data: https:; "+
 				"media-src 'self' blob:; "+

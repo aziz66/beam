@@ -4,6 +4,7 @@ import { detectContentKind, setupClipboardHandler, copyToClipboard } from './cli
 import { getDeviceLabel } from './device.js'
 import { renderItem, showNotification, updateDeviceList, updateStatusBar, setupDragDrop, completeFileTransfer } from './ui.js'
 import { sendFile, handleFileMeta, handleFileChunk, handleFileComplete } from './stream.js'
+import { WebRTCManager } from './webrtc.js'
 
 // State
 let state = 'INIT' // INIT, CREATING, JOINING, CONNECTED, DISCONNECTED, RECONNECTING
@@ -11,8 +12,12 @@ let roomCode = null
 let encryptionKey = null
 let deviceLabel = getDeviceLabel()
 let devices = []
+let ttlMinutes = 30
+let myDeviceId = null
+let roomPassphrase = ''
 
 const transport = new Transport()
+const webrtc = new WebRTCManager(transport)
 
 // DOM refs
 const landingView = document.getElementById('landing-view')
@@ -32,6 +37,7 @@ const settingsModal = document.getElementById('settings-modal')
 const settingsCloseBtn = document.getElementById('settings-close-btn')
 const settingsSaveBtn = document.getElementById('settings-save-btn')
 const settingsDeviceLabel = document.getElementById('settings-device-label')
+const settingsTtl = document.getElementById('settings-ttl')
 const inputField = document.getElementById('input-field')
 const sendBtn = document.getElementById('send-btn')
 const attachBtn = document.getElementById('attach-btn')
@@ -41,6 +47,9 @@ const roomThemeBtn = document.getElementById('room-theme-btn')
 const pinToggle = document.getElementById('pin-toggle')
 const pinPassphraseWrap = document.getElementById('pin-passphrase-wrap')
 const pinPassphrase = document.getElementById('pin-passphrase')
+const passphraseModal = document.getElementById('passphrase-modal')
+const passphraseInput = document.getElementById('passphrase-input')
+const passphraseSubmitBtn = document.getElementById('passphrase-submit-btn')
 
 // ── Theme ──────────────────────────────────────────────────────────────────
 
@@ -64,6 +73,10 @@ function toggleTheme() {
   document.documentElement.setAttribute('data-theme', next)
   localStorage.setItem('beam-theme', next)
   updateThemeIcons()
+  // Re-render the landing QR so its colors match the new theme
+  if (roomCode && landingView && landingView.classList.contains('view--active')) {
+    renderQR(buildRoomLink())
+  }
 }
 
 function updateThemeIcons() {
@@ -81,8 +94,8 @@ function init() {
   const hash = window.location.hash.slice(1) // remove #
 
   if (path.startsWith('/r/') && hash) {
-    // Join existing room
-    roomCode = path.slice(3).split('/')[0]
+    // Join existing room — trim trailing slash before extracting code
+    roomCode = path.slice(3).replace(/\/$/, '').split('/')[0]
     encryptionKey = hash
     joinRoom()
   } else {
@@ -121,6 +134,12 @@ function generateClientCode() {
   return `${a}-${n}-${num}`
 }
 
+function generateSecureId() {
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
+}
+
 function buildRoomLink() {
   return `${window.location.origin}/r/${roomCode}#${encryptionKey}`
 }
@@ -136,14 +155,20 @@ function joinRoom() {
 }
 
 function setupTransport() {
+  // Route WebRTC data-channel messages through the same handlers as WebSocket
+  webrtc.onMessage = (env) => {
+    const handler = transport.handlers.get(env.type)
+    if (handler) handler(env)
+  }
+
   transport.on('connected', () => {
     state = 'CONNECTED'
     updateStatusBar('connected')
 
-    // Send join with device label
+    // Send join with device label and passphrase (passphrase is required for protected rooms)
     transport.send({
       type: 'join',
-      payload: { room_code: roomCode, device_label: deviceLabel },
+      payload: { room_code: roomCode, device_label: deviceLabel, passphrase: roomPassphrase },
       ts: Date.now()
     })
   })
@@ -151,14 +176,17 @@ function setupTransport() {
   transport.on('disconnected', () => {
     state = 'DISCONNECTED'
     updateStatusBar('disconnected')
+    webrtc.close()
   })
 
   transport.on('reconnecting', () => {
     state = 'RECONNECTING'
     updateStatusBar('reconnecting')
+    webrtc.close()
   })
 
   transport.on('joined', (env) => {
+    myDeviceId = env.payload && env.payload.device_id ? env.payload.device_id : null
     showNotification('Connected to room', 'success')
   })
 
@@ -166,13 +194,17 @@ function setupTransport() {
     const payload = env.payload
     devices = payload.devices || []
     updateDeviceList(devices)
+    if (myDeviceId) webrtc.tryConnect(devices, myDeviceId)
   })
 
   transport.on('item', (env) => {
     const payload = env.payload
     try {
       const text = decryptToString(payload.encrypted_data, payload.nonce, encryptionKey)
-      const kind = payload.kind || detectContentKind(text)
+      // Re-detect kind locally from decrypted content — do NOT trust the sender's
+      // claimed kind field, which could be used to force a javascript: URL through
+      // renderLinkPreview by claiming kind='link' for malicious text.
+      const kind = detectContentKind(text)
       renderItem({
         item_id: payload.item_id,
         kind,
@@ -211,7 +243,7 @@ function setupTransport() {
         file_name: fileInfo.file_name,
         file_size: fileInfo.file_size,
         blob_url: fileInfo.blob_url,
-        device_label: 'Peer'
+        device_label: fileInfo.device_label || 'Peer'
       })
       showNotification(`File received: ${fileInfo.file_name}`, 'success')
     })
@@ -219,7 +251,13 @@ function setupTransport() {
 
   transport.on('error', (env) => {
     const payload = env.payload
-    showNotification(payload.message || 'An error occurred', 'error')
+    if (payload && payload.code === 'auth_required') {
+      // Show passphrase modal; on submit reconnect with the entered passphrase
+      if (passphraseModal) passphraseModal.classList.add('modal-backdrop--active')
+      if (passphraseInput) passphraseInput.focus()
+      return
+    }
+    showNotification((payload && payload.message) || 'An error occurred', 'error')
   })
 }
 
@@ -228,20 +266,23 @@ function sendTextItem(text) {
 
   const kind = detectContentKind(text)
   const { encrypted, nonce } = encrypt(text, encryptionKey)
-  const itemId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)
+  const itemId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : generateSecureId()
 
-  transport.send({
+  const envelope = {
     type: 'item',
     payload: {
       item_id: itemId,
       kind,
       encrypted_data: encrypted,
       nonce,
-      ttl: 1800,
+      ttl: ttlMinutes * 60,
       device_label: deviceLabel
     },
     ts: Date.now()
-  })
+  }
+  if (!webrtc.send(envelope)) {
+    transport.send(envelope)
+  }
 
   // Render locally
   renderItem({
@@ -249,24 +290,34 @@ function sendTextItem(text) {
     kind,
     text,
     device_label: deviceLabel + ' (you)',
+    is_mine: true,
     ts: Date.now()
   })
 }
 
 async function sendFiles(files) {
   for (const file of files) {
-    const fileId = await sendFile(file, encryptionKey, transport, deviceLabel)
+    let blobUrl = null
+    try {
+      const fileId = await sendFile(file, encryptionKey, transport, deviceLabel)
 
-    // Upgrade the progress card to show final preview
-    const blobUrl = URL.createObjectURL(file)
-    const isImage = file.type.startsWith('image/')
-    completeFileTransfer(fileId, {
-      kind: isImage ? 'image' : 'file',
-      file_name: file.name,
-      file_size: file.size,
-      blob_url: blobUrl,
-      device_label: deviceLabel + ' (you)'
-    })
+      // Upgrade the progress card to show final preview
+      blobUrl = URL.createObjectURL(file)
+      const isImage = file.type.startsWith('image/')
+      completeFileTransfer(fileId, {
+        kind: isImage ? 'image' : 'file',
+        file_name: file.name,
+        file_size: file.size,
+        blob_url: blobUrl,
+        device_label: deviceLabel + ' (you)',
+        is_mine: true
+      })
+    } catch (err) {
+      // Revoke blob URL if created before the error so it doesn't leak
+      if (blobUrl) URL.revokeObjectURL(blobUrl)
+      console.error('send file failed:', err)
+      showNotification('Failed to send file', 'error')
+    }
   }
 }
 
@@ -294,6 +345,7 @@ openRoomBtn.addEventListener('click', async () => {
       })
       if (!resp.ok) throw new Error('server error')
       const data = await resp.json()
+      if (!data.room_code) throw new Error('missing room_code')
       roomCode = data.room_code
       roomCodeEl.textContent = roomCode
       renderQR(buildRoomLink())
@@ -309,9 +361,18 @@ joinBtn.addEventListener('click', () => {
   const code = joinInput.value.trim()
   if (!code) return
 
-  // Check if it's a full URL
+  // Check if it's a full URL — validate same-origin to prevent open redirect
   if (code.includes('/r/') && code.includes('#')) {
-    window.location.href = code
+    try {
+      const parsed = new URL(code)
+      if (parsed.origin !== window.location.origin) {
+        showNotification('Invalid room link — must be from this server', 'error')
+        return
+      }
+      window.location.href = parsed.href
+    } catch {
+      showNotification('Invalid URL', 'error')
+    }
     return
   }
 
@@ -346,6 +407,7 @@ qrModalCloseBtn.addEventListener('click', () => {
 
 headerSettingsBtn.addEventListener('click', () => {
   settingsDeviceLabel.value = deviceLabel
+  settingsTtl.value = ttlMinutes
   settingsModal.classList.add('modal-backdrop--active')
 })
 
@@ -353,16 +415,38 @@ settingsCloseBtn.addEventListener('click', () => {
   settingsModal.classList.remove('modal-backdrop--active')
 })
 
+function submitPassphrase() {
+  const pass = passphraseInput ? passphraseInput.value.trim() : ''
+  if (!pass) return
+  roomPassphrase = pass
+  if (passphraseModal) passphraseModal.classList.remove('modal-backdrop--active')
+  // Reconnect with new passphrase — force a fresh connection
+  transport._forceReconnect()
+}
+
+if (passphraseSubmitBtn) {
+  passphraseSubmitBtn.addEventListener('click', submitPassphrase)
+}
+if (passphraseInput) {
+  passphraseInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submitPassphrase()
+  })
+}
+
 settingsSaveBtn.addEventListener('click', () => {
   const label = settingsDeviceLabel.value.trim()
   if (label) {
     deviceLabel = label
-    // Re-send join to update label
+    // Re-send join to update label (include passphrase for protected rooms)
     transport.send({
       type: 'join',
-      payload: { room_code: roomCode, device_label: deviceLabel },
+      payload: { room_code: roomCode, device_label: deviceLabel, passphrase: roomPassphrase },
       ts: Date.now()
     })
+  }
+  const parsedTtl = parseInt(settingsTtl.value, 10)
+  if (!isNaN(parsedTtl) && parsedTtl >= 1 && parsedTtl <= 1440) {
+    ttlMinutes = parsedTtl
   }
   settingsModal.classList.remove('modal-backdrop--active')
   showNotification('Settings saved', 'success')
@@ -389,7 +473,17 @@ inputField.addEventListener('keydown', (e) => {
 inputField.addEventListener('paste', (e) => {
   e.preventDefault()
   const text = e.clipboardData.getData('text/plain')
-  if (text) document.execCommand('insertText', false, text)
+  if (text) {
+    const sel = window.getSelection()
+    const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null
+    if (range) {
+      range.deleteContents()
+      range.insertNode(document.createTextNode(text))
+      range.collapse(false)
+      sel.removeAllRanges()
+      sel.addRange(range)
+    }
+  }
 })
 
 attachBtn.addEventListener('click', () => fileInput.click())
@@ -426,8 +520,8 @@ function renderQR(text, targetCanvas) {
     canvas.width = size
     canvas.height = size
 
-    // Determine colors based on color scheme
-    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    // Determine colors based on color scheme (respects manual theme override)
+    const isDark = isDarkActive()
     ctx.fillStyle = isDark ? '#1e1e3a' : '#ffffff'
     ctx.fillRect(0, 0, size, size)
     ctx.fillStyle = isDark ? '#e4e4e7' : '#1d1d1f'
@@ -462,6 +556,9 @@ async function boot() {
     await loadScript('/lib/qrcode.min.js')
   } catch (err) {
     console.error('Failed to load libraries:', err)
+    // Encryption libraries are required — show a hard error and stop.
+    document.body.innerHTML = '<div style="padding:2rem;font-family:sans-serif">Failed to load required libraries. Please reload the page.</div>'
+    return
   }
 
   // Register service worker
@@ -481,6 +578,39 @@ async function boot() {
 
 pinToggle.addEventListener('change', () => {
   pinPassphraseWrap.style.display = pinToggle.checked ? '' : 'none'
+})
+
+// Modal keyboard handling: Escape closes, Tab cycles focus within active modal
+document.addEventListener('keydown', (e) => {
+  // Find the currently open modal (if any)
+  const activeModal = [qrModal, settingsModal, passphraseModal].find(
+    m => m && m.classList.contains('modal-backdrop--active')
+  )
+
+  if (e.key === 'Escape') {
+    if (activeModal) activeModal.classList.remove('modal-backdrop--active')
+    return
+  }
+
+  if (e.key === 'Tab' && activeModal) {
+    const focusable = Array.from(
+      activeModal.querySelectorAll('button, input, select, textarea, [tabindex]:not([tabindex="-1"])')
+    ).filter(el => !el.disabled && el.offsetParent !== null)
+    if (focusable.length === 0) return
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (e.shiftKey) {
+      if (document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      }
+    } else {
+      if (document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+  }
 })
 
 boot()

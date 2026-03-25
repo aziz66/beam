@@ -24,44 +24,56 @@ export function detectLanguage(text) {
   return null
 }
 
+const _kwRegex = /\b(const|let|var|function|return|if|else|for|while|class|import|export|from|async|await|def|func|package|struct|interface|defer|go|chan|range|try|except|with|as|lambda|elif)\b/g
+
 export function highlightCode(text, lang) {
-  // Simple token-based highlighting
+  const pre = document.createElement('pre')
+  pre.className = 'item__code'
+
+  // Process tokens using safe DOM manipulation
+  // escapeHtml gives us a safe HTML string; we use it to build spans
   let escaped = escapeHtml(text)
 
-  // Strings
-  escaped = escaped.replace(/(["'`])(?:(?!\1|\\).|\\.)*\1/g, '<span style="color:var(--success)">$&</span>')
+  // Apply highlighting regexes to the escaped string (safe: only injecting hardcoded span tags around already-escaped content)
+  escaped = escaped.replace(/(["'`])(?:(?!\1|\\).|\\.)*\1/g, '<span class="hl-string">$&</span>')
+  escaped = escaped.replace(/(\/\/.*$|#.*$)/gm, '<span class="hl-comment">$&</span>')
+  escaped = escaped.replace(/\b(\d+\.?\d*)\b/g, '<span class="hl-number">$1</span>')
+  _kwRegex.lastIndex = 0
+  escaped = escaped.replace(_kwRegex, '<span class="hl-keyword">$1</span>')
 
-  // Comments
-  escaped = escaped.replace(/(\/\/.*$|#.*$)/gm, '<span style="color:var(--text-secondary)">$&</span>')
-
-  // Numbers
-  escaped = escaped.replace(/\b(\d+\.?\d*)\b/g, '<span style="color:var(--warning)">$1</span>')
-
-  // Keywords
-  const keywords = 'const|let|var|function|return|if|else|for|while|class|import|export|from|async|await|def|func|package|struct|interface|defer|go|chan|range|try|except|with|as|lambda|elif'
-  const kwRegex = new RegExp(`\\b(${keywords})\\b`, 'g')
-  escaped = escaped.replace(kwRegex, '<span style="color:var(--accent)">$1</span>')
-
-  return escaped
+  pre.innerHTML = escaped  // safe: escaped is HTML-escaped user content + hardcoded span tags
+  return pre
 }
 
 export function renderTextContent(text, maxLength = 500) {
+  const frag = document.createDocumentFragment()
   if (text.length <= maxLength) {
-    return escapeHtml(text)
+    frag.appendChild(document.createTextNode(text))
+    return frag
   }
-  const truncated = escapeHtml(text.slice(0, maxLength))
-  return `${truncated}<span class="item__more" style="color:var(--accent);cursor:pointer"> ...show more</span>`
+  frag.appendChild(document.createTextNode(text.slice(0, maxLength)))
+  const more = document.createElement('span')
+  more.className = 'item__more'
+  more.style.cssText = 'color:var(--accent);cursor:pointer'
+  more.textContent = ' ...show more'
+  frag.appendChild(more)
+  return frag
 }
 
 export function renderLinkPreview(url) {
   const el = document.createElement('div')
   el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="item__content--link">${escapeHtml(url)}</a>`
 
+  // AbortController so the fetch can be cancelled when the item is pruned
+  const controller = new AbortController()
+  el._abortFetch = () => controller.abort()
+
   // Try to fetch OG preview
-  fetch(`/api/preview?url=${encodeURIComponent(url)}`)
+  fetch(`/api/preview?url=${encodeURIComponent(url)}`, { signal: controller.signal })
     .then(r => r.ok ? r.json() : null)
     .then(data => {
       if (!data || !data.title) return
+      if (!document.contains(el)) return
       el.innerHTML = ''
 
       const card = document.createElement('a')
@@ -70,7 +82,8 @@ export function renderLinkPreview(url) {
       card.rel = 'noopener noreferrer'
       card.className = 'link-preview'
 
-      if (data.image) {
+      // Only allow https image URLs — reject http, data:, javascript:, etc.
+      if (data.image && data.image.startsWith('https://')) {
         const img = document.createElement('img')
         img.className = 'link-preview__image'
         img.src = data.image
@@ -115,14 +128,6 @@ export function formatBytes(n) {
   return `${val < 10 ? val.toFixed(1) : Math.round(val)} ${units[i]}`
 }
 
-export function formatTimeAgo(ts) {
-  const diff = Math.floor((Date.now() - ts) / 1000)
-  if (diff < 5) return 'just now'
-  if (diff < 60) return `${diff}s ago`
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-  return `${Math.floor(diff / 86400)}d ago`
-}
 
 function escapeHtml(str) {
   const div = document.createElement('div')

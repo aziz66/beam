@@ -6,6 +6,11 @@ pub struct RoomConfig {
     pub room_code: String,
     pub encryption_key: String,
     pub auto_sync: bool,
+    /// Optional passphrase for passphrase-protected pinned rooms.
+    /// Omitted from serialization when None so existing keyring entries
+    /// that predate this field deserialize without error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub passphrase: Option<String>,
 }
 
 impl Default for RoomConfig {

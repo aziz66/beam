@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"log"
 	"os"
 	"strconv"
 	"time"
@@ -19,6 +20,7 @@ type Config struct {
 	TLSKey            string
 	GracePeriod       time.Duration
 	MaxRooms          int
+	TrustedProxy      bool // trust X-Forwarded-For for rate limiting (only set when behind a known proxy)
 }
 
 func Load() *Config {
@@ -34,6 +36,7 @@ func Load() *Config {
 	flag.StringVar(&c.TLSKey, "tls-key", envStr("BEAM_TLS_KEY", ""), "TLS key path")
 	flag.DurationVar(&c.GracePeriod, "grace-period", envDuration("BEAM_GRACE_PERIOD", 5*time.Minute), "Room grace period after last disconnect")
 	flag.IntVar(&c.MaxRooms, "max-rooms", envInt("BEAM_MAX_ROOMS", 1000), "Maximum concurrent rooms")
+	flag.BoolVar(&c.TrustedProxy, "trusted-proxy", envBool("BEAM_TRUSTED_PROXY", false), "Trust X-Forwarded-For header (set only when behind a known reverse proxy)")
 	flag.Parse()
 	return c
 }
@@ -50,6 +53,7 @@ func envInt(key string, fallback int) int {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n
 		}
+		log.Printf("config: invalid %s=%q, using default %d", key, v, fallback)
 	}
 	return fallback
 }
@@ -59,6 +63,7 @@ func envInt64(key string, fallback int64) int64 {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			return n
 		}
+		log.Printf("config: invalid %s=%q, using default %d", key, v, fallback)
 	}
 	return fallback
 }
@@ -68,6 +73,7 @@ func envBool(key string, fallback bool) bool {
 		if b, err := strconv.ParseBool(v); err == nil {
 			return b
 		}
+		log.Printf("config: invalid %s=%q, using default %v", key, v, fallback)
 	}
 	return fallback
 }
@@ -77,6 +83,7 @@ func envDuration(key string, fallback time.Duration) time.Duration {
 		if d, err := time.ParseDuration(v); err == nil {
 			return d
 		}
+		log.Printf("config: invalid %s=%q, using default %v", key, v, fallback)
 	}
 	return fallback
 }

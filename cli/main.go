@@ -24,6 +24,11 @@ import (
 
 const chunkSize = 64 * 1024 // 64KB
 
+// maxTotalChunks caps file transfers at ~1 GB (16384 × 64 KB).
+// This prevents a malicious peer from allocating unbounded memory in the
+// receiver by claiming a huge totalChunks value.
+const maxTotalChunks = 16384
+
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
@@ -84,20 +89,27 @@ func cmdSend() {
 	if len(args) > 0 && !*clipboard {
 		sendFileCLI(conn, args[0], *key)
 	} else {
-		var text string
-		if *clipboard || len(args) == 0 {
-			data, err := io.ReadAll(os.Stdin)
-			if err != nil {
-				log.Fatalf("reading stdin: %v", err)
-			}
-			text = string(data)
-		} else {
-			text = strings.Join(args, " ")
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			log.Fatalf("reading stdin: %v", err)
 		}
-		sendTextCLI(conn, text, *key)
+		sendTextCLI(conn, string(data), *key)
 	}
 
-	time.Sleep(500 * time.Millisecond)
+	// Send a clean WebSocket close and drain until the server echoes it back.
+	// This is more reliable than a fixed sleep for ensuring the message is
+	// flushed through the server before the process exits.
+	conn.WriteControl(
+		websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
+		time.Now().Add(2*time.Second),
+	)
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	for {
+		if _, _, err := conn.ReadMessage(); err != nil {
+			break
+		}
+	}
 	fmt.Println("sent!")
 }
 
@@ -135,6 +147,10 @@ func cmdReceive() {
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				fmt.Println("\nroom closed")
+				return
+			}
 			log.Fatalf("read error: %v", err)
 		}
 
@@ -157,8 +173,28 @@ func cmdReceive() {
 			fmt.Printf("[%s] %s\n", payload.Kind, text)
 
 		case protocol.TypeFileMeta:
+			// Prune transfers older than 5 minutes
+			for id, ft := range transfers {
+				if time.Since(ft.startedAt) > 5*time.Minute {
+					fmt.Printf("\n  transfer %s timed out, discarding\n", id)
+					delete(transfers, id)
+				}
+			}
+			// Enforce max concurrent transfers
+			if len(transfers) >= 50 {
+				fmt.Printf("  too many concurrent transfers, skipping\n")
+				continue
+			}
 			var payload protocol.FileMetaPayload
 			if err := env.ParsePayload(&payload); err != nil {
+				continue
+			}
+			if payload.TotalChunks == 0 {
+				fmt.Printf("  skipping empty file transfer\n")
+				continue
+			}
+			if payload.TotalChunks > maxTotalChunks {
+				fmt.Printf("  transfer claims %d chunks (max %d), skipping\n", payload.TotalChunks, maxTotalChunks)
 				continue
 			}
 			name, err := decryptString(payload.EncryptedName, payload.Nonce, *key)
@@ -170,6 +206,7 @@ func cmdReceive() {
 				size:        payload.Size,
 				totalChunks: payload.TotalChunks,
 				chunks:      make(map[int][]byte),
+				startedAt:   time.Now(),
 			}
 			fmt.Printf("receiving file: %s (%d bytes)\n", name, payload.Size)
 
@@ -180,6 +217,10 @@ func cmdReceive() {
 			}
 			ft, ok := transfers[payload.FileID]
 			if !ok {
+				continue
+			}
+			if payload.Index < 0 || payload.Index >= ft.totalChunks {
+				fmt.Printf("  chunk index %d out of range (expected 0–%d), skipping\n", payload.Index, ft.totalChunks-1)
 				continue
 			}
 			data, err := decryptRawBytes(payload.EncryptedData, payload.Nonce, *key)
@@ -202,7 +243,22 @@ func cmdReceive() {
 			}
 			fmt.Println()
 
-			outPath := filepath.Join(*outDir, ft.name)
+			// Strip any path components from the received filename
+			safeName := filepath.Base(ft.name)
+			if safeName == "" || safeName == "." || safeName == ".." {
+				fmt.Printf("  skipping file with invalid name\n")
+				delete(transfers, payload.FileID)
+				continue
+			}
+			outPath := filepath.Join(*outDir, safeName)
+			// Ensure the resolved path is within the output directory
+			cleanOut := filepath.Clean(*outDir)
+			if !strings.HasPrefix(filepath.Clean(outPath), cleanOut+string(os.PathSeparator)) &&
+				filepath.Clean(outPath) != cleanOut {
+				fmt.Printf("  skipping file with unsafe path: %s\n", ft.name)
+				delete(transfers, payload.FileID)
+				continue
+			}
 			// Verify all chunks arrived before writing
 			allChunks := true
 			for i := 0; i < ft.totalChunks; i++ {
@@ -216,16 +272,33 @@ func cmdReceive() {
 				delete(transfers, payload.FileID)
 				continue
 			}
-			f, err := os.Create(outPath)
+			tmpPath := outPath + ".beam-tmp"
+			f, err := os.Create(tmpPath)
 			if err != nil {
 				fmt.Printf("  error creating file: %v\n", err)
 				delete(transfers, payload.FileID)
 				continue
 			}
+			writeErr := false
 			for i := 0; i < ft.totalChunks; i++ {
-				f.Write(ft.chunks[i])
+				if _, err := f.Write(ft.chunks[i]); err != nil {
+					fmt.Printf("  error writing chunk %d: %v\n", i, err)
+					writeErr = true
+					break
+				}
 			}
 			f.Close()
+			if writeErr {
+				os.Remove(tmpPath)
+				delete(transfers, payload.FileID)
+				continue
+			}
+			if err := os.Rename(tmpPath, outPath); err != nil {
+				fmt.Printf("  error saving file: %v\n", err)
+				os.Remove(tmpPath)
+				delete(transfers, payload.FileID)
+				continue
+			}
 			delete(transfers, payload.FileID)
 			fmt.Printf("  saved: %s\n", outPath)
 
@@ -262,7 +335,8 @@ func cmdNew() {
 	if err != nil {
 		log.Fatalf("marshaling request: %v", err)
 	}
-	resp, err := http.Post(*server+"/api/rooms", "application/json", strings.NewReader(string(bodyBytes)))
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+	resp, err := httpClient.Post(strings.TrimRight(*server, "/")+"/api/rooms", "application/json", strings.NewReader(string(bodyBytes)))
 	if err != nil {
 		log.Fatalf("creating room: %v", err)
 	}
@@ -272,6 +346,9 @@ func cmdNew() {
 	if err != nil {
 		log.Fatalf("reading response: %v", err)
 	}
+	if resp.StatusCode != http.StatusCreated {
+		log.Fatalf("server error (%d): %s", resp.StatusCode, string(respBody))
+	}
 
 	var result struct {
 		RoomCode string `json:"room_code"`
@@ -280,7 +357,7 @@ func cmdNew() {
 		log.Fatalf("parsing response: %v", err)
 	}
 
-	link := fmt.Sprintf("%s/r/%s#%s", *server, result.RoomCode, keyB64)
+	link := fmt.Sprintf("%s/r/%s#%s", strings.TrimRight(*server, "/"), result.RoomCode, keyB64)
 	fmt.Printf("Room: %s\n", result.RoomCode)
 	fmt.Printf("Key:  %s\n", keyB64)
 	fmt.Printf("Link: %s\n", link)
@@ -316,16 +393,27 @@ func waitForJoined(conn *websocket.Conn) {
 		"ts":      time.Now().UnixMilli(),
 	}
 	data, _ := json.Marshal(join)
-	conn.WriteMessage(websocket.TextMessage, data)
+	if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+		log.Fatalf("send join: %v", err)
+	}
 
+	conn.SetReadDeadline(time.Now().Add(15 * time.Second))
 	for {
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
 			log.Fatalf("waiting for joined: %v", err)
 		}
 		var env protocol.Envelope
-		if json.Unmarshal(msg, &env) == nil && env.Type == protocol.TypeJoined {
-			return
+		if json.Unmarshal(msg, &env) == nil {
+			if env.Type == protocol.TypeJoined {
+				conn.SetReadDeadline(time.Time{}) // clear deadline
+				return
+			}
+			if env.Type == protocol.TypeError {
+				var ep protocol.ErrorPayload
+				env.ParsePayload(&ep)
+				log.Fatalf("server error: %s", ep.Message)
+			}
 		}
 	}
 }
@@ -349,7 +437,9 @@ func sendTextCLI(conn *websocket.Conn, text, keyB64 string) {
 		"ts": time.Now().UnixMilli(),
 	}
 	data, _ := json.Marshal(env)
-	conn.WriteMessage(websocket.TextMessage, data)
+	if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+		log.Fatalf("send text: %v", err)
+	}
 }
 
 func sendFileCLI(conn *websocket.Conn, filePath, keyB64 string) {
@@ -366,6 +456,9 @@ func sendFileCLI(conn *websocket.Conn, filePath, keyB64 string) {
 
 	fileName := filepath.Base(filePath)
 	fileSize := stat.Size()
+	if fileSize == 0 {
+		log.Fatalf("cannot send empty file: %s", filePath)
+	}
 	totalChunks := int((fileSize + chunkSize - 1) / chunkSize)
 	fileID := fmt.Sprintf("cli-%d", time.Now().UnixNano())
 
@@ -388,7 +481,9 @@ func sendFileCLI(conn *websocket.Conn, filePath, keyB64 string) {
 		"ts": time.Now().UnixMilli(),
 	}
 	data, _ := json.Marshal(meta)
-	conn.WriteMessage(websocket.TextMessage, data)
+	if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+		log.Fatalf("send file_meta: %v", err)
+	}
 
 	buf := make([]byte, chunkSize)
 	for i := 0; i < totalChunks; i++ {
@@ -413,7 +508,9 @@ func sendFileCLI(conn *websocket.Conn, filePath, keyB64 string) {
 			"ts": time.Now().UnixMilli(),
 		}
 		cdata, _ := json.Marshal(chunk)
-		conn.WriteMessage(websocket.TextMessage, cdata)
+		if err := conn.WriteMessage(websocket.TextMessage, cdata); err != nil {
+			log.Fatalf("send chunk %d: %v", i, err)
+		}
 
 		pct := (i + 1) * 100 / totalChunks
 		fmt.Printf("\r%s %s %d%%", fileName, progressBar(pct), pct)
@@ -426,7 +523,9 @@ func sendFileCLI(conn *websocket.Conn, filePath, keyB64 string) {
 		"ts":      time.Now().UnixMilli(),
 	}
 	cdata, _ := json.Marshal(complete)
-	conn.WriteMessage(websocket.TextMessage, cdata)
+	if err := conn.WriteMessage(websocket.TextMessage, cdata); err != nil {
+		log.Fatalf("send file_complete: %v", err)
+	}
 }
 
 // Crypto helpers
@@ -435,6 +534,9 @@ func encryptData(plaintext []byte, keyB64 string) (encB64, nonceB64 string, err 
 	keyBytes, err := base64.StdEncoding.DecodeString(keyB64)
 	if err != nil {
 		return "", "", err
+	}
+	if len(keyBytes) != 32 {
+		return "", "", fmt.Errorf("key must be 32 bytes, got %d", len(keyBytes))
 	}
 	var key [32]byte
 	copy(key[:], keyBytes)
@@ -461,12 +563,18 @@ func decryptRawBytes(encB64, nonceB64, keyB64 string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(keyBytes) != 32 {
+		return nil, fmt.Errorf("key must be 32 bytes, got %d", len(keyBytes))
+	}
 	var key [32]byte
 	copy(key[:], keyBytes)
 
 	nonceBytes, err := base64.StdEncoding.DecodeString(nonceB64)
 	if err != nil {
 		return nil, err
+	}
+	if len(nonceBytes) != 24 {
+		return nil, fmt.Errorf("nonce must be 24 bytes, got %d", len(nonceBytes))
 	}
 	var nonce [24]byte
 	copy(nonce[:], nonceBytes)
@@ -490,9 +598,16 @@ type fileTransfer struct {
 	size        int64
 	totalChunks int
 	chunks      map[int][]byte
+	startedAt   time.Time
 }
 
 func progressBar(pct int) string {
+	if pct < 0 {
+		pct = 0
+	}
+	if pct > 100 {
+		pct = 100
+	}
 	filled := pct / 5
 	empty := 20 - filled
 	return "[" + strings.Repeat("=", filled) + strings.Repeat(" ", empty) + "]"

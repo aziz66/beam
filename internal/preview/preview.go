@@ -1,6 +1,7 @@
 package preview
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -31,17 +32,43 @@ type cacheEntry struct {
 	expiresAt time.Time
 }
 
+type inflightCall struct {
+	wg  sync.WaitGroup
+	res *Result
+	err error
+}
+
 type Previewer struct {
-	client *http.Client
-	cache  map[string]*cacheEntry
-	mu     sync.RWMutex
+	client   *http.Client
+	cache    map[string]*cacheEntry
+	inflight map[string]*inflightCall
+	mu       sync.RWMutex
 }
 
 func New() *Previewer {
+	dialer := &net.Dialer{Timeout: 3 * time.Second}
 	transport := &http.Transport{
-		DialContext: (&net.Dialer{
-			Timeout: 3 * time.Second,
-		}).DialContext,
+		// Validate the resolved IP at dial time to prevent DNS rebinding attacks.
+		// A hostname check before Do() is racy; by the time the TCP connection
+		// is made, DNS could have changed to point at a private address.
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			ips, err := net.DefaultResolver.LookupHost(ctx, host)
+			if err != nil {
+				return nil, err
+			}
+			if len(ips) == 0 {
+				return nil, fmt.Errorf("no addresses for %s", host)
+			}
+			ip := ips[0]
+			if isPrivateIP(ip) {
+				return nil, fmt.Errorf("private IP blocked")
+			}
+			return dialer.DialContext(ctx, network, net.JoinHostPort(ip, port))
+		},
 		TLSHandshakeTimeout: 3 * time.Second,
 	}
 
@@ -53,13 +80,17 @@ func New() *Previewer {
 				if len(via) >= 3 {
 					return fmt.Errorf("too many redirects")
 				}
-				if isPrivateIP(req.URL.Hostname()) {
+				// Only check literal IPs here — do NOT do a DNS lookup.
+				// A second lookup creates a TOCTOU window for DNS rebinding;
+				// DialContext already validates the resolved IP at connection time.
+				if ip := net.ParseIP(req.URL.Hostname()); ip != nil && isPrivateNetIP(ip) {
 					return fmt.Errorf("redirect to private IP blocked")
 				}
 				return nil
 			},
 		},
-		cache: make(map[string]*cacheEntry),
+		cache:    make(map[string]*cacheEntry),
+		inflight: make(map[string]*inflightCall),
 	}
 }
 
@@ -73,10 +104,6 @@ func (p *Previewer) Fetch(rawURL string) (*Result, error) {
 		return nil, fmt.Errorf("unsupported scheme")
 	}
 
-	if isPrivateIP(parsed.Hostname()) {
-		return nil, fmt.Errorf("private IP blocked")
-	}
-
 	// Check cache
 	p.mu.RLock()
 	if entry, ok := p.cache[rawURL]; ok && time.Now().Before(entry.expiresAt) {
@@ -85,8 +112,28 @@ func (p *Previewer) Fetch(rawURL string) (*Result, error) {
 	}
 	p.mu.RUnlock()
 
+	// Deduplicate concurrent fetches for the same URL
+	p.mu.Lock()
+	if call, ok := p.inflight[rawURL]; ok {
+		p.mu.Unlock()
+		call.wg.Wait()
+		return call.res, call.err
+	}
+	call := &inflightCall{}
+	call.wg.Add(1)
+	p.inflight[rawURL] = call
+	p.mu.Unlock()
+
+	defer func() {
+		call.wg.Done()
+		p.mu.Lock()
+		delete(p.inflight, rawURL)
+		p.mu.Unlock()
+	}()
+
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
+		call.err = err
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "BeamBot/1.0 (link preview)")
@@ -94,20 +141,33 @@ func (p *Previewer) Fetch(rawURL string) (*Result, error) {
 
 	resp, err := p.client.Do(req)
 	if err != nil {
+		call.err = err
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("status %d", resp.StatusCode)
+		// Cache negative results with a short TTL so repeated requests for the
+		// same unavailable URL don't hammer the remote server on every preview.
+		p.mu.Lock()
+		p.cache[rawURL] = &cacheEntry{
+			result:    &Result{URL: rawURL},
+			expiresAt: time.Now().Add(5 * time.Minute),
+		}
+		p.mu.Unlock()
+		call.err = fmt.Errorf("status %d", resp.StatusCode)
+		return nil, call.err
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodySize))
 	if err != nil {
+		call.err = err
 		return nil, err
 	}
 
-	html := string(body)
+	// Normalize whitespace: collapse newlines to spaces so the OG-tag regexes
+	// match attributes whose values span multiple lines in minified/pretty HTML.
+	html := strings.NewReplacer("\r\n", " ", "\r", " ", "\n", " ").Replace(string(body))
 	result := &Result{
 		URL:         rawURL,
 		Title:       extractMeta(html, "og:title"),
@@ -144,6 +204,7 @@ func (p *Previewer) Fetch(rawURL string) (*Result, error) {
 	}
 	p.mu.Unlock()
 
+	call.res = result
 	return result, nil
 }
 
@@ -218,19 +279,11 @@ func extractTitle(html string) string {
 	return ""
 }
 
-func isPrivateIP(host string) bool {
-	ip := net.ParseIP(host)
-	if ip == nil {
-		// Try resolving hostname
-		ips, err := net.LookupIP(host)
-		if err != nil || len(ips) == 0 {
-			return true // block on resolve failure
-		}
-		ip = ips[0]
-	}
-
-	privateRanges := []string{
+var privateRanges = func() []*net.IPNet {
+	cidrs := []string{
+		"0.0.0.0/8",
 		"10.0.0.0/8",
+		"100.64.0.0/10",
 		"172.16.0.0/12",
 		"192.168.0.0/16",
 		"127.0.0.0/8",
@@ -239,12 +292,38 @@ func isPrivateIP(host string) bool {
 		"fc00::/7",
 		"fe80::/10",
 	}
+	nets := make([]*net.IPNet, 0, len(cidrs))
+	for _, cidr := range cidrs {
+		_, n, err := net.ParseCIDR(cidr)
+		if err != nil {
+			panic(fmt.Sprintf("invalid CIDR %q: %v", cidr, err))
+		}
+		nets = append(nets, n)
+	}
+	return nets
+}()
 
-	for _, cidr := range privateRanges {
-		_, network, _ := net.ParseCIDR(cidr)
+// isPrivateNetIP reports whether ip is in a private/link-local range.
+func isPrivateNetIP(ip net.IP) bool {
+	for _, network := range privateRanges {
 		if network.Contains(ip) {
 			return true
 		}
 	}
 	return false
+}
+
+// isPrivateIP checks a host string. If the host is not a literal IP it is
+// resolved via DNS — only use this path in DialContext (not in CheckRedirect,
+// where a second lookup creates a TOCTOU window).
+func isPrivateIP(host string) bool {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		ips, err := net.LookupIP(host)
+		if err != nil || len(ips) == 0 {
+			return true // block on resolve failure
+		}
+		ip = ips[0]
+	}
+	return isPrivateNetIP(ip)
 }

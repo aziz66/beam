@@ -18,7 +18,7 @@ const (
 type Room struct {
 	Code       string
 	CreatedAt  time.Time
-	Clients    map[string]*Client
+	clients    map[string]*Client
 	Items      []*StoredItem
 	Pinned     bool
 	Passphrase string // bcrypt hash
@@ -47,7 +47,7 @@ func NewRoom(code string, maxSize int, defaultTTL time.Duration) *Room {
 	return &Room{
 		Code:       code,
 		CreatedAt:  time.Now(),
-		Clients:    make(map[string]*Client),
+		clients:    make(map[string]*Client),
 		Items:      make([]*StoredItem, 0),
 		MaxSize:    maxSize,
 		DefaultTTL: defaultTTL,
@@ -68,25 +68,25 @@ func (r *Room) AddClient(c *Client) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if len(r.Clients) >= r.MaxSize {
+	if len(r.clients) >= r.MaxSize {
 		return false
 	}
-	r.Clients[c.DeviceID] = c
+	r.clients[c.DeviceID] = c
 	return true
 }
 
 func (r *Room) RemoveClient(deviceID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	delete(r.Clients, deviceID)
+	delete(r.clients, deviceID)
 }
 
 func (r *Room) GetClients() []*Client {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	clients := make([]*Client, 0, len(r.Clients))
-	for _, c := range r.Clients {
+	clients := make([]*Client, 0, len(r.clients))
+	for _, c := range r.clients {
 		clients = append(clients, c)
 	}
 	return clients
@@ -95,13 +95,13 @@ func (r *Room) GetClients() []*Client {
 func (r *Room) GetClient(deviceID string) *Client {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.Clients[deviceID]
+	return r.clients[deviceID]
 }
 
 func (r *Room) ClientCount() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return len(r.Clients)
+	return len(r.clients)
 }
 
 func (r *Room) StoreItem(data []byte, ttl time.Duration) {
@@ -114,9 +114,12 @@ func (r *Room) StoreItem(data []byte, ttl time.Duration) {
 	}
 	r.Items = append(r.Items, item)
 
-	// FIFO eviction
+	// FIFO eviction — copy rather than reslice so the evicted pointers are
+	// freed by the GC instead of staying alive in the backing array.
 	if len(r.Items) > maxStoredItems {
-		r.Items = r.Items[len(r.Items)-maxStoredItems:]
+		keep := r.Items[len(r.Items)-maxStoredItems:]
+		r.Items = make([]*StoredItem, maxStoredItems)
+		copy(r.Items, keep)
 	}
 }
 
@@ -155,7 +158,7 @@ func (r *Room) CleanExpiredItems() int {
 func (r *Room) IsEmpty() bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return len(r.Clients) == 0
+	return len(r.clients) == 0
 }
 
 func (r *Room) StartGraceTimer(duration time.Duration, onExpire func()) {
@@ -185,7 +188,7 @@ func (r *Room) Close() {
 	if r.graceTimer != nil {
 		r.graceTimer.Stop()
 	}
-	for _, c := range r.Clients {
+	for _, c := range r.clients {
 		c.Close()
 	}
 }
@@ -202,7 +205,9 @@ func (c *Client) WritePump() {
 	for {
 		select {
 		case msg, ok := <-c.Send:
-			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := c.Conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
+				return
+			}
 			if !ok {
 				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
@@ -211,7 +216,9 @@ func (c *Client) WritePump() {
 				return
 			}
 		case <-ticker.C:
-			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := c.Conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
+				return
+			}
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
@@ -223,11 +230,34 @@ func (c *Client) Close() {
 	c.closeOnce.Do(func() {
 		close(c.Send)
 	})
-	c.Conn.Close()
+	// Conn is closed by WritePump's deferred c.Conn.Close().
+	// Do NOT call c.Conn.Close() here — it races with WritePump's in-progress write.
 }
 
 func (r *Room) HasGraceTimer() bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.graceTimer != nil
+}
+
+func (c *Client) GetDeviceLabel() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.DeviceLabel
+}
+
+func (c *Client) SetDeviceLabel(label string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.DeviceLabel = label
+}
+
+func (r *Room) StartGraceTimerIfNone(duration time.Duration, onExpire func()) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.graceTimer != nil {
+		return false
+	}
+	r.graceTimer = time.AfterFunc(duration, onExpire)
+	return true
 }

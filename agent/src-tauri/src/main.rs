@@ -1,5 +1,4 @@
 // Beam Desktop Agent — Tauri tray app for clipboard auto-sync
-// Connects to a Beam server room via WebSocket and syncs clipboard content
 
 #![cfg_attr(
     all(not(debug_assertions), target_os = "windows"),
@@ -9,17 +8,126 @@
 mod clipboard;
 mod room;
 mod tray;
+mod ws;
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use tauri::Manager;
+use tokio::sync::mpsc;
+
+pub struct AppState {
+    pub ws_tx: std::sync::Mutex<Option<mpsc::Sender<String>>>,
+    /// Per-connection cancel token. Replaced on each connect_room call so the
+    /// old task's cancel is set to true independently of the new task's token.
+    pub cancel: std::sync::Mutex<Arc<AtomicBool>>,
+    pub config: std::sync::Mutex<Option<room::RoomConfig>>,
+    pub connected: Arc<AtomicBool>,
+    pub last_remote: Arc<std::sync::Mutex<String>>,
+}
+
+#[tauri::command]
+async fn connect_room(config: room::RoomConfig, app: tauri::AppHandle) -> Result<String, String> {
+    let state = app.state::<AppState>();
+
+    // Signal old connection to stop using its own cancel token, then drop its
+    // sender so the old task exits immediately via the closed rx channel.
+    {
+        let old_cancel = state.cancel.lock().unwrap().clone();
+        old_cancel.store(true, Ordering::SeqCst);
+    }
+    *state.ws_tx.lock().unwrap() = None; // drops old tx → closes old rx
+    state.connected.store(false, Ordering::SeqCst);
+
+    *state.config.lock().unwrap() = Some(config.clone());
+
+    // Persist credentials so the agent can auto-reconnect on next startup
+    if let Err(e) = room::save_credentials(&config) {
+        #[cfg(debug_assertions)]
+        eprintln!("failed to save credentials: {}", e);
+        let _ = e;
+    }
+
+    // Create a fresh cancel token for this connection (not shared with old task)
+    let cancel = Arc::new(AtomicBool::new(false));
+    *state.cancel.lock().unwrap() = cancel.clone();
+
+    let (tx, rx) = mpsc::channel::<String>(64);
+    *state.ws_tx.lock().unwrap() = Some(tx);
+
+    let connected = state.connected.clone();
+    let last_remote = state.last_remote.clone();
+
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        rt.block_on(ws::run_ws(config, rx, cancel, connected, last_remote, app));
+    });
+
+    Ok("spawned".to_string())
+}
+
+#[tauri::command]
+async fn get_config(app: tauri::AppHandle) -> Result<Option<room::RoomConfig>, String> {
+    let state = app.state::<AppState>();
+    let config = state.config.lock().unwrap().clone();
+    Ok(config)
+}
+
+#[tauri::command]
+async fn get_status(app: tauri::AppHandle) -> Result<String, String> {
+    let state = app.state::<AppState>();
+    if state.connected.load(Ordering::SeqCst) {
+        Ok("connected".to_string())
+    } else {
+        Ok("disconnected".to_string())
+    }
+}
 
 fn main() {
     tauri::Builder::default()
+        .manage(AppState {
+            ws_tx: std::sync::Mutex::new(None),
+            cancel: std::sync::Mutex::new(Arc::new(AtomicBool::new(true))),
+            config: std::sync::Mutex::new(None),
+            connected: Arc::new(AtomicBool::new(false)),
+            last_remote: Arc::new(std::sync::Mutex::new(String::new())),
+        })
         .system_tray(tray::create_tray())
         .on_system_tray_event(tray::handle_tray_event)
+        .invoke_handler(tauri::generate_handler![connect_room, get_status, get_config])
         .setup(|app| {
-            // Start clipboard watcher
+            tauri::WindowBuilder::new(
+                app,
+                "settings",
+                tauri::WindowUrl::App("index.html".into()),
+            )
+            .title("Beam Agent Settings")
+            .inner_size(420.0, 400.0)
+            .resizable(false)
+            .visible(false)
+            .build()?;
+
+            // Auto-reconnect to last room if credentials were saved
+            if let Ok(config) = room::load_credentials() {
+                let handle = app.handle();
+                let state = handle.state::<AppState>();
+                *state.config.lock().unwrap() = Some(config.clone());
+                let cancel = Arc::new(AtomicBool::new(false));
+                *state.cancel.lock().unwrap() = cancel.clone();
+                let (tx, rx) = mpsc::channel::<String>(64);
+                *state.ws_tx.lock().unwrap() = Some(tx);
+                let connected = state.connected.clone();
+                let last_remote = state.last_remote.clone();
+                std::thread::spawn(move || {
+                    let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+                    rt.block_on(ws::run_ws(config, rx, cancel, connected, last_remote, handle));
+                });
+            }
+
             let handle = app.handle();
             std::thread::spawn(move || {
                 clipboard::watch_clipboard(handle);
             });
+
             Ok(())
         })
         .run(tauri::generate_context!())

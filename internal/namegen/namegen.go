@@ -2,8 +2,10 @@ package namegen
 
 import (
 	"crypto/rand"
+	"fmt"
 	"math/big"
 	"regexp"
+	"strconv"
 )
 
 var adjectives = []string{
@@ -48,7 +50,7 @@ var adjectives = []string{
 	"trail", "tulip", "turbo", "velvet", "verde",
 	"violet", "vivid", "warm", "wave", "west",
 	"wild", "willow", "wind", "winter", "wise",
-	"wood", "zephyr", "zinc", "misty", "dusty",
+	"wood", "zephyr", "zinc", "misty", "breezy",
 }
 
 var nouns = []string{
@@ -99,28 +101,31 @@ var nouns = []string{
 
 var codePattern = regexp.MustCompile(`^[a-z]+-[a-z]+-\d{2}$`)
 
-func Generate() string {
-	adj := adjectives[randInt(len(adjectives))]
-	noun := nouns[randInt(len(nouns))]
-	num := randInt(90) + 10 // 10-99
-	return adj + "-" + noun + "-" + itoa(num)
+func Generate() (string, error) {
+	adjIdx, err := randInt(len(adjectives))
+	if err != nil {
+		return "", err
+	}
+	nounIdx, err := randInt(len(nouns))
+	if err != nil {
+		return "", err
+	}
+	num, err := randInt(90)
+	if err != nil {
+		return "", err
+	}
+	return adjectives[adjIdx] + "-" + nouns[nounIdx] + "-" + strconv.Itoa(num+10), nil
 }
 
 func Validate(code string) bool {
 	return codePattern.MatchString(code)
 }
 
-func randInt(max int) int {
+func randInt(max int) (int, error) {
 	n, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
 	if err != nil {
-		panic("crypto/rand failed: " + err.Error())
+		return 0, fmt.Errorf("crypto/rand failed: %w", err)
 	}
-	return int(n.Int64())
+	return int(n.Int64()), nil
 }
 
-func itoa(n int) string {
-	if n < 10 {
-		return "0" + string(rune('0'+n))
-	}
-	return string(rune('0'+n/10)) + string(rune('0'+n%10))
-}
