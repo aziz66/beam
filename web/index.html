@@ -13,7 +13,7 @@
 <body>
   <!-- Landing View -->
   <div id="landing-view" class="view landing">
-    <button id="landing-theme-btn" class="btn btn--secondary btn--icon landing__theme-btn" title="Toggle theme"></button>
+    <button id="landing-theme-btn" class="btn btn--secondary btn--icon landing__theme-btn" title="Toggle theme" aria-label="Toggle theme"></button>
     <div class="landing__logo">Beam</div>
     <p class="landing__subtitle">Encrypted ephemeral sharing between any devices. No install, no accounts.</p>
 
@@ -87,13 +87,13 @@
         <span id="header-devices" class="room__devices"></span>
       </div>
       <div class="room__header-actions">
-        <button id="header-copy-btn" class="btn btn--secondary btn--icon btn--small" title="Copy link">
+        <button id="header-copy-btn" class="btn btn--secondary btn--icon btn--small" title="Copy link" aria-label="Copy link">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
             <rect x="5" y="5" width="8" height="8" rx="1.5"/>
             <path d="M3 11V3.5A1.5 1.5 0 014.5 2H11"/>
           </svg>
         </button>
-        <button id="header-qr-btn" class="btn btn--secondary btn--icon btn--small" title="Show QR">
+        <button id="header-qr-btn" class="btn btn--secondary btn--icon btn--small" title="Show QR" aria-label="Show QR code">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
             <rect x="1" y="1" width="5" height="5" rx="1"/>
             <rect x="10" y="1" width="5" height="5" rx="1"/>
@@ -101,8 +101,8 @@
             <rect x="11" y="11" width="3" height="3" rx="0.5"/>
           </svg>
         </button>
-        <button id="room-theme-btn" class="btn btn--secondary btn--icon btn--small" title="Toggle theme"></button>
-        <button id="header-settings-btn" class="btn btn--secondary btn--icon btn--small" title="Settings">
+        <button id="room-theme-btn" class="btn btn--secondary btn--icon btn--small" title="Toggle theme" aria-label="Toggle theme"></button>
+        <button id="header-settings-btn" class="btn btn--secondary btn--icon btn--small" title="Settings" aria-label="Settings">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
             <circle cx="8" cy="8" r="2.5"/>
             <path d="M13 8a5 5 0 01-.5 2.1l1.3 1.3-1.4 1.4-1.3-1.3A5 5 0 018 13a5 5 0 01-2.1-.5l-1.3 1.3-1.4-1.4 1.3-1.3A5 5 0 013 8a5 5 0 01.5-2.1L2.2 4.6l1.4-1.4 1.3 1.3A5 5 0 018 3a5 5 0 012.1.5l1.3-1.3 1.4 1.4-1.3 1.3A5 5 0 0113 8z"/>
@@ -133,14 +133,14 @@
 
     <div class="room__input">
       <div class="room__input-row">
-        <div id="input-field" class="room__input-field" contenteditable="true" data-placeholder="Type or paste something..."></div>
+        <div id="input-field" class="room__input-field" contenteditable="true" role="textbox" aria-label="Message input" data-placeholder="Type or paste something..."></div>
         <input id="file-input" type="file" multiple style="display: none;">
-        <button id="attach-btn" class="btn btn--secondary btn--icon" title="Attach file">
+        <button id="attach-btn" class="btn btn--secondary btn--icon" title="Attach file" aria-label="Attach file">
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M15 9.5l-6.2 6.2a4 4 0 01-5.6-5.6l7.4-7.4a2.5 2.5 0 013.5 3.5L7 13.3a1 1 0 01-1.4-1.4L12 5.5"/>
           </svg>
         </button>
-        <button id="send-btn" class="btn btn--primary btn--icon" title="Send">
+        <button id="send-btn" class="btn btn--primary btn--icon" title="Send" aria-label="Send">
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 9h12M10 4l5 5-5 5"/>
           </svg>

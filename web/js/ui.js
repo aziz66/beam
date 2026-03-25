@@ -307,6 +307,17 @@ export function renderFileProgress(fileId, fileName, fileSize, progress) {
     wrapper.className = 'item-wrapper item-wrapper--peer'
     wrapper.appendChild(card)
     feed.appendChild(wrapper)
+
+    // Enforce feed cap — a malicious peer sending many file_meta messages would
+    // otherwise grow the DOM without bound.
+    const MAX_FEED_ITEMS = 200
+    const allWrappers = feed.querySelectorAll('.item-wrapper')
+    if (allWrappers.length > MAX_FEED_ITEMS) {
+      const toRemove = allWrappers.length - MAX_FEED_ITEMS
+      for (let i = 0; i < toRemove; i++) {
+        _removeFeedItem(allWrappers[i])
+      }
+    }
   }
 
   const fill = card.querySelector('.item__progress-fill')

@@ -199,6 +199,8 @@ function setupTransport() {
 
   transport.on('item', (env) => {
     const payload = env.payload
+    // Deduplicate: server may relay the same item twice on reconnect
+    if (payload.item_id && document.querySelector(`[data-item-id="${payload.item_id}"]`)) return
     try {
       const text = decryptToString(payload.encrypted_data, payload.nonce, encryptionKey)
       // Re-detect kind locally from decrypted content — do NOT trust the sender's
@@ -296,6 +298,11 @@ function sendTextItem(text) {
 }
 
 async function sendFiles(files) {
+  const MAX_FILES_PER_SEND = 10
+  if (files.length > MAX_FILES_PER_SEND) {
+    showNotification(`Select at most ${MAX_FILES_PER_SEND} files at a time`, 'error')
+    return
+  }
   for (const file of files) {
     let blobUrl = null
     try {
@@ -582,6 +589,12 @@ async function boot() {
       }
     })
   }
+
+  // Clean up WebRTC and WebSocket on page unload to release peer connections promptly
+  window.addEventListener('beforeunload', () => {
+    webrtc.close()
+    transport.close()
+  })
 
   initTheme()
   init()

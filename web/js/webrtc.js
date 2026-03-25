@@ -153,7 +153,7 @@ export class WebRTCManager {
 
       // Flush ICE candidates that arrived before remote description was ready
       for (const candidate of this._pendingCandidates) {
-        try { await this.pc.addIceCandidate(candidate) } catch {}
+        try { await this.pc.addIceCandidate(candidate) } catch (err) { console.warn('webrtc: addIceCandidate failed:', err) }
       }
       this._pendingCandidates = []
 
@@ -185,7 +185,7 @@ export class WebRTCManager {
 
       // Flush ICE candidates that arrived before remote description was ready
       for (const candidate of this._pendingCandidates) {
-        try { await this.pc.addIceCandidate(candidate) } catch {}
+        try { await this.pc.addIceCandidate(candidate) } catch (err) { console.warn('webrtc: addIceCandidate failed:', err) }
       }
       this._pendingCandidates = []
     } catch (err) {

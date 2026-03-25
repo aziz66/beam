@@ -75,13 +75,21 @@ export function renderLinkPreview(url) {
   const el = document.createElement('div')
   el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="item__content--link">${escapeHtml(url)}</a>`
 
-  // AbortController so the fetch can be cancelled when the item is pruned
+  // AbortController so the fetch can be cancelled when the item is pruned or times out
   const controller = new AbortController()
-  el._abortFetch = () => controller.abort()
+  const timeoutId = setTimeout(() => controller.abort(), 5000)
+  el._abortFetch = () => { clearTimeout(timeoutId); controller.abort() }
 
   // Try to fetch OG preview
   fetch(`/api/preview?url=${encodeURIComponent(url)}`, { signal: controller.signal })
-    .then(r => r.ok ? r.json() : null)
+    .then(r => {
+      clearTimeout(timeoutId)
+      if (!r.ok) return null
+      // Reject unexpectedly large responses to prevent memory exhaustion
+      const cl = r.headers.get('content-length')
+      if (cl && parseInt(cl, 10) > 100_000) return null
+      return r.json()
+    })
     .then(data => {
       if (!data || !data.title) return
       if (!document.contains(el)) return
@@ -126,7 +134,7 @@ export function renderLinkPreview(url) {
       card.appendChild(body)
       el.appendChild(card)
     })
-    .catch(() => {})
+    .catch(() => { clearTimeout(timeoutId) })
 
   return el
 }

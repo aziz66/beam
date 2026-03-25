@@ -37,8 +37,11 @@ export function decrypt(encryptedBase64, nonceBase64, keyBase64) {
   const n = getNacl()
   const util = getNaclUtil()
   const key = util.decodeBase64(keyBase64)
+  if (!key) throw new Error('invalid key encoding')
   const nonce = util.decodeBase64(nonceBase64)
+  if (!nonce) throw new Error('invalid nonce encoding')
   const encrypted = util.decodeBase64(encryptedBase64)
+  if (!encrypted) throw new Error('invalid ciphertext encoding')
   const decrypted = n.secretbox.open(encrypted, nonce, key)
   if (!decrypted) throw new Error('decryption failed')
   return decrypted
