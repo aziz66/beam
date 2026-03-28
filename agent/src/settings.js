@@ -75,6 +75,22 @@ connectBtn.addEventListener('click', () => {
     .catch((err) => setStatus(false, 'Error: ' + JSON.stringify(err)))
 })
 
+// Listen for Beam room URL detected in clipboard; prefill form when disconnected
+if (window.__TAURI__?.event) {
+  window.__TAURI__.event.listen('beam-room-url', ({ payload }) => {
+    invoke('get_status').then((status) => {
+      if (status === 'connected') return
+      serverUrl.value = payload.server_url
+      roomCode.value = payload.room_code
+      encryptionKey.value = payload.encryption_key
+      const notice = document.getElementById('paste-notice')
+      notice.classList.add('paste-notice--visible')
+      clearTimeout(notice._hideTimer)
+      notice._hideTimer = setTimeout(() => notice.classList.remove('paste-notice--visible'), 5000)
+    }).catch(() => {})
+  })
+}
+
 // Poll connection status every second — skip when window is not visible
 setInterval(() => {
   if (document.visibilityState !== 'visible') return

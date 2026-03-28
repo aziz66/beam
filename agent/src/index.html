@@ -63,6 +63,18 @@
     }
     .status-dot--connected { background: #34c759; }
     .status-dot--disconnected { background: #6e6e73; }
+    .paste-notice {
+      display: none;
+      margin-top: 0.75rem;
+      padding: 0.625rem 0.75rem;
+      border-radius: 6px;
+      background: #0d2b1e;
+      border: 1px solid #2d6a4f;
+      color: #52b788;
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+    .paste-notice--visible { display: block; }
   </style>
 </head>
 <body>
@@ -94,6 +106,8 @@
   </div>
 
   <button id="connect-btn">Connect</button>
+
+  <div id="paste-notice" class="paste-notice">Room details detected — click Connect to join</div>
 
   <div class="status">
     <span class="status-dot status-dot--disconnected" id="status-dot"></span>
