@@ -254,7 +254,14 @@ function setupTransport() {
   transport.on('error', (env) => {
     const payload = env.payload
     if (payload && payload.code === 'auth_required') {
-      // Show passphrase modal; on submit reconnect with the entered passphrase
+      // Stop all auto-reconnect attempts while the user types their passphrase.
+      // The server closes the connection right after sending this error, which
+      // would normally trigger _scheduleReconnect(). Setting intentionalClose
+      // makes the imminent onclose emit 'disconnected' instead of retrying —
+      // preventing the modal from being interrupted or re-shown mid-typing.
+      clearTimeout(transport.reconnectTimer)
+      transport.intentionalClose = true
+      if (passphraseInput) passphraseInput.value = ''
       if (passphraseModal) passphraseModal.classList.add('modal-backdrop--active')
       if (passphraseInput) passphraseInput.focus()
       return
@@ -427,7 +434,9 @@ function submitPassphrase() {
   if (!pass) return
   roomPassphrase = pass
   if (passphraseModal) passphraseModal.classList.remove('modal-backdrop--active')
-  // Reconnect with new passphrase — force a fresh connection
+  // Re-enable auto-reconnect (was paused while the modal was open) then
+  // force a fresh connection so the join is sent with the new passphrase.
+  transport.intentionalClose = false
   transport._forceReconnect()
 }
 
