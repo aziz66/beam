@@ -401,16 +401,16 @@ joinInput.addEventListener('keydown', (e) => {
 
 headerAgentBtn.addEventListener('click', () => {
   // Build a beam:// (or beams:// for TLS) deep-link URL.
-  // Use a hidden anchor click instead of window.location.href so the browser
-  // triggers the protocol handler without navigating away from the room page.
+  // Use a hidden iframe — unlike anchor clicks or location.href, iframes with
+  // custom scheme URLs never fire beforeunload on the parent page, so the
+  // WebSocket stays open while the OS protocol handler launches the agent.
   const scheme = window.location.protocol === 'https:' ? 'beams' : 'beam'
   const agentUrl = `${scheme}://${window.location.host}/${roomCode}#${encryptionKey}`
-  const a = document.createElement('a')
-  a.href = agentUrl
-  a.style.display = 'none'
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
+  const iframe = document.createElement('iframe')
+  iframe.style.cssText = 'display:none;width:0;height:0;border:0;position:absolute'
+  iframe.src = agentUrl
+  document.body.appendChild(iframe)
+  setTimeout(() => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe) }, 2000)
 })
 
 headerCopyBtn.addEventListener('click', async () => {
