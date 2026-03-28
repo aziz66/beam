@@ -14,6 +14,15 @@ function setStatus(connected, message) {
   statusText.textContent = message
 }
 
+function fillForm(config) {
+  if (!config) return
+  if (config.server_url) serverUrl.value = config.server_url
+  if (config.room_code) roomCode.value = config.room_code
+  if (config.encryption_key) encryptionKey.value = config.encryption_key
+  if (config.passphrase) passphrase.value = config.passphrase
+  if (typeof config.auto_sync === 'boolean') autoSync.checked = config.auto_sync
+}
+
 function invoke(cmd, args) {
   return window.__TAURI__.invoke(cmd, args || {})
 }
@@ -25,17 +34,15 @@ window.addEventListener('load', () => {
   }
   setStatus(false, 'Ready')
 
-  // Pre-fill form from saved config
-  invoke('get_config')
-    .then((config) => {
-      if (!config) return
-      if (config.server_url) serverUrl.value = config.server_url
-      if (config.room_code) roomCode.value = config.room_code
-      if (config.encryption_key) encryptionKey.value = config.encryption_key
-      if (config.passphrase) passphrase.value = config.passphrase
-      if (typeof config.auto_sync === 'boolean') autoSync.checked = config.auto_sync
-    })
-    .catch(() => {})
+  // Pre-fill form from saved/active config
+  invoke('get_config').then(fillForm).catch(() => {})
+
+  // Re-fill whenever the window is shown (e.g. after a deep-link connect)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      invoke('get_config').then(fillForm).catch(() => {})
+    }
+  })
 
 })
 
