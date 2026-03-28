@@ -36,6 +36,27 @@ window.addEventListener('load', () => {
       if (typeof config.auto_sync === 'boolean') autoSync.checked = config.auto_sync
     })
     .catch(() => {})
+
+  // Detect Beam room URLs copied to clipboard while disconnected and prefill form.
+  // Pattern: http(s)://<host>/r/<room-code>#<key>  — any domain, any port.
+  const beamUrlRe = /^(https?:\/\/[^\s/]+)\/r\/([\w]+-[\w]+-\d+)#(.+)$/
+  if (window.__TAURI__?.event) {
+    window.__TAURI__.event.listen('clipboard-change', ({ payload: text }) => {
+      invoke('get_status').then((status) => {
+        if (status === 'connected') return
+        if (typeof text !== 'string') return
+        const m = text.trim().match(beamUrlRe)
+        if (!m) return
+        serverUrl.value = m[1]
+        roomCode.value = m[2]
+        encryptionKey.value = m[3]
+        const notice = document.getElementById('paste-notice')
+        notice.classList.add('paste-notice--visible')
+        clearTimeout(notice._hideTimer)
+        notice._hideTimer = setTimeout(() => notice.classList.remove('paste-notice--visible'), 5000)
+      }).catch(() => {})
+    })
+  }
 })
 
 connectBtn.addEventListener('click', () => {
@@ -74,22 +95,6 @@ connectBtn.addEventListener('click', () => {
     .then(() => {}) // status updates via polling
     .catch((err) => setStatus(false, 'Error: ' + JSON.stringify(err)))
 })
-
-// Listen for Beam room URL detected in clipboard; prefill form when disconnected
-if (window.__TAURI__?.event) {
-  window.__TAURI__.event.listen('beam-room-url', ({ payload }) => {
-    invoke('get_status').then((status) => {
-      if (status === 'connected') return
-      serverUrl.value = payload.server_url
-      roomCode.value = payload.room_code
-      encryptionKey.value = payload.encryption_key
-      const notice = document.getElementById('paste-notice')
-      notice.classList.add('paste-notice--visible')
-      clearTimeout(notice._hideTimer)
-      notice._hideTimer = setTimeout(() => notice.classList.remove('paste-notice--visible'), 5000)
-    }).catch(() => {})
-  })
-}
 
 // Poll connection status every second — skip when window is not visible
 setInterval(() => {

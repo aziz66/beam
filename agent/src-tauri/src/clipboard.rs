@@ -1,41 +1,9 @@
 use arboard::Clipboard;
-use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
-use url::Url;
 
 use crate::AppState;
-
-/// Parse a Beam room URL from any domain.
-/// Accepts: `<scheme>://<host>[:<port>]/r/<room-code>#<key>`
-/// Returns `(server_url, room_code, encryption_key)` if valid, else `None`.
-fn parse_beam_url(text: &str) -> Option<(String, String, String)> {
-    let url = Url::parse(text.trim()).ok()?;
-    let scheme = url.scheme();
-    if scheme != "http" && scheme != "https" {
-        return None;
-    }
-    let path = url.path();
-    let room_code = path.strip_prefix("/r/")?;
-    // room code must be non-empty, no extra path segments, and have ≥2 hyphens
-    if room_code.is_empty() || room_code.contains('/') {
-        return None;
-    }
-    if room_code.split('-').count() < 3 {
-        return None;
-    }
-    let fragment = url.fragment()?;
-    if fragment.is_empty() {
-        return None;
-    }
-    let host = url.host_str()?;
-    let server_url = match url.port() {
-        Some(port) => format!("{}://{}:{}", scheme, host, port),
-        None => format!("{}://{}", scheme, host),
-    };
-    Some((server_url, room_code.to_string(), fragment.to_string()))
-}
 
 /// Poll clipboard every 500ms; forward changes to WS and emit events.
 pub fn watch_clipboard(app: AppHandle) {
@@ -77,19 +45,6 @@ pub fn watch_clipboard(app: AppHandle) {
                 }
 
                 let _ = app.emit_all("clipboard-change", text.clone());
-
-                // When not connected, detect Beam room URLs in clipboard and
-                // notify the settings window to pre-fill the connection form.
-                let connected = state.connected.load(Ordering::SeqCst);
-                if !connected {
-                    if let Some((server_url, room_code, key)) = parse_beam_url(&text) {
-                        let _ = app.emit_all("beam-room-url", serde_json::json!({
-                            "server_url": server_url,
-                            "room_code": room_code,
-                            "encryption_key": key
-                        }));
-                    }
-                }
             }
         }
     }
