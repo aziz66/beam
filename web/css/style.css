@@ -1629,6 +1629,32 @@ button, input, [contenteditable] {
   -webkit-backdrop-filter: blur(12px);
 }
 
+/* Row holding checkbox label + info icon */
+.landing__pin > .landing__pin-label,
+.landing__pin > .landing__pin-info {
+  display: inline-flex;
+}
+
+/* Wrap label and info icon in a flex row automatically */
+.landing__pin {
+  flex-direction: column;
+}
+
+.landing__pin > :first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-direction: row;
+  gap: 0;
+}
+
+/* Override: the pin top row is label + info side-by-side */
+.landing__pin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .landing__pin-label {
   display: flex;
   align-items: center;
@@ -1650,6 +1676,69 @@ button, input, [contenteditable] {
   accent-color: var(--accent);
   cursor: pointer;
   flex-shrink: 0;
+}
+
+/* ---- Info icon + tooltip ---- */
+
+.landing__pin-info {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-tertiary);
+  cursor: default;
+  flex-shrink: 0;
+  padding: 2px;
+  border-radius: 50%;
+  transition: color var(--transition);
+  margin-left: auto;
+}
+
+.landing__pin-info:hover,
+.landing__pin-info:focus {
+  color: var(--accent);
+  outline: none;
+}
+
+.landing__pin-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  width: 240px;
+  background: var(--bg-card-solid);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-lg);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity var(--transition), transform var(--transition);
+  z-index: 50;
+  white-space: normal;
+}
+
+/* Arrow */
+.landing__pin-tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  background: var(--bg-card-solid);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  transform: rotate(45deg);
+}
+
+.landing__pin-info:hover .landing__pin-tooltip,
+.landing__pin-info:focus .landing__pin-tooltip {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .input--sm {
