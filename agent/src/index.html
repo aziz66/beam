@@ -3,103 +3,209 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Beam Agent Settings</title>
+  <title>Beam Agent</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #1a1a2e;
-      color: #e4e4e7;
-      padding: 1.5rem;
-      min-height: 100vh;
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg:         #0c0f1a;
+      --bg-card:    #111827;
+      --bg-input:   #1a1d2e;
+      --text:       #f1f5f9;
+      --text-sec:   #94a3b8;
+      --text-ter:   #64748b;
+      --accent:     #818cf8;
+      --accent-hov: #a5b4fc;
+      --border:     rgba(148,163,184,0.12);
+      --radius:     10px;
+      --success:    #10b981;
+      --danger:     #ef4444;
+      --tr:         180ms cubic-bezier(.4,0,.2,1);
     }
-    h1 { font-size: 1.2rem; margin-bottom: 1.5rem; }
-    .field { margin-bottom: 1rem; }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      overflow: hidden;
+    }
+
+    .app {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      padding: 1rem;
+      gap: 0.75rem;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .header__logo {
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #818cf8, #a78bfa, #c4b5fd);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .header__status {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.78rem;
+      color: var(--text-sec);
+    }
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--text-ter);
+      flex-shrink: 0;
+      transition: background var(--tr);
+    }
+    .status-dot--connected { background: var(--success); box-shadow: 0 0 6px rgba(16,185,129,.5); }
+    .status-dot--connecting { background: #f59e0b; }
+
+    /* ── Card ── */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.875rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      flex-shrink: 0;
+    }
+
+    /* ── Form fields ── */
+    .field { display: flex; flex-direction: column; gap: 0.3rem; }
     .field label {
-      display: block;
-      font-size: 0.8rem;
-      color: #a1a1aa;
-      margin-bottom: 0.25rem;
+      font-size: 0.72rem;
+      font-weight: 500;
+      color: var(--text-ter);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
     .field input {
       width: 100%;
-      padding: 0.5rem;
-      border: 1px solid #2e2e4a;
-      border-radius: 6px;
-      background: #1e1e3a;
-      color: #e4e4e7;
-      font-size: 0.9rem;
+      padding: 0.45rem 0.6rem;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      color: var(--text);
+      font-size: 0.85rem;
+      font-family: inherit;
+      transition: border-color var(--tr), box-shadow var(--tr);
+      outline: none;
     }
-    .field input:focus { border-color: #0071e3; outline: none; }
+    .field input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(129,140,248,.15);
+    }
+    .field input::placeholder { color: var(--text-ter); }
+
+    /* ── Toggle row ── */
     .toggle {
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      margin-bottom: 1rem;
+      font-size: 0.82rem;
+      color: var(--text-sec);
+      cursor: pointer;
+      user-select: none;
     }
-    .toggle input[type="checkbox"] { width: 18px; height: 18px; }
-    button {
+    .toggle input[type="checkbox"] {
+      width: 15px; height: 15px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    /* ── Buttons ── */
+    .btn {
       padding: 0.5rem 1rem;
       border: none;
-      border-radius: 6px;
-      font-size: 0.9rem;
-      cursor: pointer;
-      background: #0071e3;
-      color: white;
-    }
-    button:hover { background: #0077ED; }
-    .status {
-      margin-top: 1.5rem;
-      padding: 0.75rem;
-      border-radius: 6px;
-      background: #1e1e3a;
+      border-radius: 8px;
       font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background var(--tr), opacity var(--tr), transform var(--tr);
+      outline: none;
     }
-    .status-dot {
-      display: inline-block;
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      margin-right: 0.5rem;
+    .btn:active { transform: scale(0.97); }
+    .btn--primary {
+      background: var(--accent);
+      color: #fff;
     }
-    .status-dot--connected { background: #34c759; }
-    .status-dot--disconnected { background: #6e6e73; }
+    .btn--primary:hover { background: var(--accent-hov); }
+    .btn--secondary {
+      background: var(--bg-input);
+      color: var(--text-sec);
+      border: 1px solid var(--border);
+    }
+    .btn--secondary:hover { color: var(--text); border-color: rgba(148,163,184,.3); }
+    .btn--full { width: 100%; }
+
+    /* ── Separator ── */
+    .sep {
+      border: none;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    /* ── Passphrase hint ── */
+    .hint {
+      font-size: 0.72rem;
+      color: var(--text-ter);
+      margin-top: -0.2rem;
+    }
   </style>
 </head>
 <body>
-  <h1>Beam Agent</h1>
+<div class="app">
 
-  <div class="field">
-    <label>Server URL</label>
-    <input id="server-url" type="text" value="http://localhost:8080" />
+  <div class="header">
+    <span class="header__logo">Beam Agent</span>
+    <div class="header__status">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">Disconnected</span>
+    </div>
   </div>
 
-  <div class="field">
-    <label>Room Code</label>
-    <input id="room-code" type="text" placeholder="e.g. coral-tiger-88" />
+  <div class="card">
+    <div class="field">
+      <label>Server URL</label>
+      <input id="server-url" type="text" value="http://localhost:8080" placeholder="http://your-server:8080" />
+    </div>
+    <div class="field">
+      <label>Room Code</label>
+      <input id="room-code" type="text" placeholder="e.g. coral-tiger-88" />
+    </div>
+    <div class="field">
+      <label>Encryption Key</label>
+      <input id="encryption-key" type="password" placeholder="Paste from room link (#…)" />
+    </div>
+    <div class="field">
+      <label>Passphrase <span class="hint">(optional — for protected rooms)</span></label>
+      <input id="passphrase" type="password" placeholder="Leave blank if none" />
+    </div>
+    <div class="toggle">
+      <input id="auto-sync" type="checkbox" checked />
+      <label for="auto-sync">Auto-sync clipboard</label>
+    </div>
   </div>
 
-  <div class="field">
-    <label>Encryption Key</label>
-    <input id="encryption-key" type="password" placeholder="Base64 key from room link" />
-  </div>
+  <button id="connect-btn" class="btn btn--primary btn--full">Connect</button>
 
-  <div class="field">
-    <label>Passphrase (optional)</label>
-    <input id="passphrase" type="password" placeholder="Only for protected rooms" />
-  </div>
-
-  <div class="toggle">
-    <input id="auto-sync" type="checkbox" checked />
-    <label for="auto-sync">Auto-sync clipboard</label>
-  </div>
-
-  <button id="connect-btn">Connect</button>
-
-  <div class="status">
-    <span class="status-dot status-dot--disconnected" id="status-dot"></span>
-    <span id="status-text">Disconnected</span>
-  </div>
-
-  <script src="settings.js"></script>
+</div>
+<script src="settings.js"></script>
 </body>
 </html>

@@ -144,18 +144,55 @@ fn handle_beam_url(app: &AppHandle, url: &str) {
         rt.block_on(ws::run_ws(config, rx, cancel, connected, last_remote, app_clone));
     });
 
-    // Show settings window so user can see the connection being made
+    // Show settings window so the user can see the live connection status
     if let Some(window) = app.get_window("settings") {
         let _ = window.show();
         let _ = window.set_focus();
     }
 }
 
+/// Register beam:// and beams:// URL schemes in HKCU so clicking a link
+/// anywhere on the OS launches this executable with the URL as argv[1].
+/// Uses HKCU (no admin required). Silently skips on non-Windows platforms.
+#[cfg(target_os = "windows")]
+fn register_url_schemes() {
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_SET_VALUE};
+    use winreg::RegKey;
+
+    let exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let exe_str = exe.to_string_lossy();
+    let cmd_value = format!("\"{}\" \"%1\"", exe_str);
+
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    for scheme in &["beam", "beams"] {
+        let key_path = format!("SOFTWARE\\Classes\\{}", scheme);
+        if let Ok((key, _)) = hkcu.create_subkey(&key_path) {
+            let _ = key.set_value("", &format!("URL:{} Protocol", scheme));
+            let _ = key.set_value("URL Protocol", &"");
+        }
+        let cmd_path = format!("SOFTWARE\\Classes\\{}\\shell\\open\\command", scheme);
+        if let Ok((cmd_key, _)) = hkcu.create_subkey_with_flags(&cmd_path, KEY_SET_VALUE) {
+            let _ = cmd_key.set_value("", &cmd_value);
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn register_url_schemes() {}
+
 fn main() {
-    // prepare() must be called before the Tauri builder — on Windows it registers
-    // the beam:// and beams:// protocol handlers in HKCU and handles single-instance
-    // forwarding (sends the URL to an already-running instance via a named pipe).
-    tauri_plugin_deep_link::prepare("sh.beam.agent");
+    // Register beam:// and beams:// in the OS URL scheme registry so
+    // any click on such a link anywhere launches this app with the URL as argv[1].
+    register_url_schemes();
+
+    // Check if this instance was launched via a beam:// / beams:// deep link.
+    // If so, extract the URL now; we'll call handle_beam_url() after setup completes.
+    let deep_link_url: Option<String> = std::env::args()
+        .nth(1)
+        .filter(|a| a.starts_with("beam://") || a.starts_with("beams://"));
 
     tauri::Builder::default()
         .manage(AppState {
@@ -168,7 +205,7 @@ fn main() {
         .system_tray(tray::create_tray())
         .on_system_tray_event(tray::handle_tray_event)
         .invoke_handler(tauri::generate_handler![connect_room, get_status, get_config])
-        .setup(|app| {
+        .setup(move |app| {
             tauri::WindowBuilder::new(
                 app,
                 "settings",
@@ -180,35 +217,32 @@ fn main() {
             .visible(false)
             .build()?;
 
-            // Auto-reconnect to last room if credentials were saved
-            if let Ok(config) = room::load_credentials() {
+            // If launched via deep link: connect immediately (skip saved credentials).
+            if let Some(url) = deep_link_url {
                 let handle = app.handle();
-                let state = handle.state::<AppState>();
-                *state.config.lock().unwrap() = Some(config.clone());
-                let cancel = Arc::new(AtomicBool::new(false));
-                *state.cancel.lock().unwrap() = cancel.clone();
-                let (tx, rx) = mpsc::channel::<String>(64);
-                *state.ws_tx.lock().unwrap() = Some(tx);
-                let connected = state.connected.clone();
-                let last_remote = state.last_remote.clone();
                 std::thread::spawn(move || {
-                    let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
-                    rt.block_on(ws::run_ws(config, rx, cancel, connected, last_remote, handle));
+                    // Small delay to let the window finish initialising before
+                    // showing it and updating the tray status label.
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                    handle_beam_url(&handle, &url);
                 });
-            }
-
-            // Register beam:// and beams:// deep-link handlers
-            {
-                let handle = app.handle();
-                tauri_plugin_deep_link::register("beam", move |url: String| {
-                    handle_beam_url(&handle, &url);
-                })?;
-            }
-            {
-                let handle = app.handle();
-                tauri_plugin_deep_link::register("beams", move |url: String| {
-                    handle_beam_url(&handle, &url);
-                })?;
+            } else {
+                // Auto-reconnect to last room if credentials were saved
+                if let Ok(config) = room::load_credentials() {
+                    let handle = app.handle();
+                    let state = handle.state::<AppState>();
+                    *state.config.lock().unwrap() = Some(config.clone());
+                    let cancel = Arc::new(AtomicBool::new(false));
+                    *state.cancel.lock().unwrap() = cancel.clone();
+                    let (tx, rx) = mpsc::channel::<String>(64);
+                    *state.ws_tx.lock().unwrap() = Some(tx);
+                    let connected = state.connected.clone();
+                    let last_remote = state.last_remote.clone();
+                    std::thread::spawn(move || {
+                        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+                        rt.block_on(ws::run_ws(config, rx, cancel, connected, last_remote, handle));
+                    });
+                }
             }
 
             let handle = app.handle();

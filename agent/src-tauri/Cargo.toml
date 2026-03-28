@@ -22,7 +22,7 @@ base64 = "0.21"
 xsalsa20poly1305 = "0.9"
 rand = "0.8"
 url = "2"
-tauri-plugin-deep-link = "0.1"
+winreg = "0.52"
 
 [features]
 default = ["custom-protocol"]
