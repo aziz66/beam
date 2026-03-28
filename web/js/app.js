@@ -399,18 +399,22 @@ joinInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') joinBtn.click()
 })
 
+// Flag: set true while handling a beam:// deep-link click so beforeunload
+// doesn't close the transport (Chrome fires beforeunload for custom scheme
+// navigation even though the page stays — this suppresses that).
+let _agentLinkPending = false
+
 headerAgentBtn.addEventListener('click', () => {
-  // Build a beam:// (or beams:// for TLS) deep-link URL.
-  // Use a hidden iframe — unlike anchor clicks or location.href, iframes with
-  // custom scheme URLs never fire beforeunload on the parent page, so the
-  // WebSocket stays open while the OS protocol handler launches the agent.
   const scheme = window.location.protocol === 'https:' ? 'beams' : 'beam'
   const agentUrl = `${scheme}://${window.location.host}/${roomCode}#${encryptionKey}`
-  const iframe = document.createElement('iframe')
-  iframe.style.cssText = 'display:none;width:0;height:0;border:0;position:absolute'
-  iframe.src = agentUrl
-  document.body.appendChild(iframe)
-  setTimeout(() => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe) }, 2000)
+  _agentLinkPending = true
+  setTimeout(() => { _agentLinkPending = false }, 2000)
+  const a = document.createElement('a')
+  a.href = agentUrl
+  a.style.display = 'none'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
 })
 
 headerCopyBtn.addEventListener('click', async () => {
@@ -614,8 +618,10 @@ async function boot() {
     })
   }
 
-  // Clean up WebRTC and WebSocket on page unload to release peer connections promptly
+  // Clean up WebRTC and WebSocket on page unload to release peer connections promptly.
+  // Skip cleanup if this is a beam:// protocol-handler click (page is NOT leaving).
   window.addEventListener('beforeunload', () => {
+    if (_agentLinkPending) return
     webrtc.close()
     transport.close()
   })
