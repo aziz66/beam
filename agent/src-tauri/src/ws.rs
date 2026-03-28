@@ -57,8 +57,9 @@ pub async fn run_ws(
         // Build WS URL with room_code as a proper path segment (handles special chars).
         let url = Url::parse(&format!("{}/ws/", ws_url))
             .map(|mut u| {
-                if u.path_segments_mut().map(|mut s| s.push(&config.room_code)).is_err() {
-                    eprintln!("beam-agent: cannot-be-a-base URL, falling back to string concat");
+                match u.path_segments_mut() {
+                    Ok(mut s) => { s.push(&config.room_code); }
+                    Err(_) => eprintln!("beam-agent: cannot-be-a-base URL, falling back to string concat"),
                 }
                 u.to_string()
             })

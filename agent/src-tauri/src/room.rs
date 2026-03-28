@@ -20,6 +20,7 @@ impl Default for RoomConfig {
             room_code: String::new(),
             encryption_key: String::new(),
             auto_sync: true,
+            passphrase: None,
         }
     }
 }
