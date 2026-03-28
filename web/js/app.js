@@ -401,10 +401,16 @@ joinInput.addEventListener('keydown', (e) => {
 
 headerAgentBtn.addEventListener('click', () => {
   // Build a beam:// (or beams:// for TLS) deep-link URL.
-  // The agent parses this to extract server host:port, room code, and key.
+  // Use a hidden anchor click instead of window.location.href so the browser
+  // triggers the protocol handler without navigating away from the room page.
   const scheme = window.location.protocol === 'https:' ? 'beams' : 'beam'
   const agentUrl = `${scheme}://${window.location.host}/${roomCode}#${encryptionKey}`
-  window.location.href = agentUrl
+  const a = document.createElement('a')
+  a.href = agentUrl
+  a.style.display = 'none'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
 })
 
 headerCopyBtn.addEventListener('click', async () => {

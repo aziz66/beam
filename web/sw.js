@@ -1,4 +1,4 @@
-const CACHE_NAME = 'beam-v26'
+const CACHE_NAME = 'beam-v27'
 const SHELL_ASSETS = [
   '/',
   '/css/style.css',
