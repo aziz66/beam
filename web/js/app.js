@@ -28,6 +28,7 @@ const joinInput = document.getElementById('join-input')
 const joinBtn = document.getElementById('join-btn')
 const copyLinkBtn = document.getElementById('copy-link-btn')
 const openRoomBtn = document.getElementById('open-room-btn')
+const headerAgentBtn = document.getElementById('header-agent-btn')
 const headerCopyBtn = document.getElementById('header-copy-btn')
 const headerQrBtn = document.getElementById('header-qr-btn')
 const qrModal = document.getElementById('qr-modal')
@@ -396,6 +397,14 @@ joinBtn.addEventListener('click', () => {
 
 joinInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') joinBtn.click()
+})
+
+headerAgentBtn.addEventListener('click', () => {
+  // Build a beam:// (or beams:// for TLS) deep-link URL.
+  // The agent parses this to extract server host:port, room code, and key.
+  const scheme = window.location.protocol === 'https:' ? 'beams' : 'beam'
+  const agentUrl = `${scheme}://${window.location.host}/${roomCode}#${encryptionKey}`
+  window.location.href = agentUrl
 })
 
 headerCopyBtn.addEventListener('click', async () => {
