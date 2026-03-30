@@ -54,8 +54,6 @@ function applyFilter() {
 }
 
 export function renderItem(item) {
-  feedEmpty.style.display = 'none'
-
   const isMine = item.is_mine === true
 
   const card = document.createElement('div')
@@ -226,11 +224,6 @@ export function renderItem(item) {
   // files where the URL lives only in a click-handler closure (not a DOM src attr).
   if (item.blob_url) wrapper.dataset.blobUrl = item.blob_url
 
-  // Hide if it doesn't match the active filter
-  if (activeFilter !== 'all' && wrapper.querySelector('.item').dataset.kind !== activeFilter) {
-    wrapper.style.display = 'none'
-  }
-
   feed.appendChild(wrapper)
 
   // Cap feed size — remove oldest items to avoid unbounded DOM growth
@@ -242,6 +235,9 @@ export function renderItem(item) {
       _removeFeedItem(allWrappers[i])
     }
   }
+
+  // Update filter visibility + empty-state for the newly added item
+  applyFilter()
 
   if (autoScroll) {
     feed.scrollTop = feed.scrollHeight
@@ -265,6 +261,7 @@ function _removeFeedItem(wrapper) {
     URL.revokeObjectURL(wrapper.dataset.blobUrl)
   }
   wrapper.remove()
+  applyFilter()
 }
 
 export function removeFeedCard(fileId) {
@@ -278,7 +275,6 @@ export function removeFeedCard(fileId) {
 export function renderFileProgress(fileId, fileName, fileSize, progress) {
   let card = feed.querySelector(`[data-file-id="${fileId}"]`)
   if (!card) {
-    feedEmpty.style.display = 'none'
     card = document.createElement('div')
     card.className = 'item'
     card.dataset.fileId = fileId
@@ -318,6 +314,9 @@ export function renderFileProgress(fileId, fileName, fileSize, progress) {
         _removeFeedItem(allWrappers[i])
       }
     }
+
+    // Apply filter visibility (in-progress file cards honour the active filter)
+    applyFilter()
   }
 
   const fill = card.querySelector('.item__progress-fill')
@@ -459,12 +458,8 @@ export function completeFileTransfer(fileId, item) {
   // Store blob URL on wrapper for cleanup (non-media files have no DOM src attr)
   if (item.blob_url) wrapper.dataset.blobUrl = item.blob_url
 
-  // Respect active filter
-  if (activeFilter !== 'all' && finalKind !== activeFilter) {
-    wrapper.style.display = 'none'
-  } else {
-    wrapper.style.display = ''
-  }
+  // Re-apply filter — kind may have changed (e.g. file→image) on completion
+  applyFilter()
 
   if (autoScroll) feed.scrollTop = feed.scrollHeight
 }
