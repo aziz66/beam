@@ -17,8 +17,6 @@ use xsalsa20poly1305::{
     Key, Nonce, XSalsa20Poly1305,
 };
 
-use url::Url;
-
 use crate::room::RoomConfig;
 
 pub async fn run_ws(
