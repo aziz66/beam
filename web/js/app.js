@@ -631,7 +631,7 @@ async function boot() {
 }
 
 pinToggle.addEventListener('change', () => {
-  pinPassphraseWrap.style.display = pinToggle.checked ? '' : 'none'
+  pinPassphraseWrap.classList.toggle('is-open', pinToggle.checked)
 })
 
 // Modal keyboard handling: Escape closes, Tab cycles focus within active modal

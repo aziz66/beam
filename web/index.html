@@ -28,21 +28,17 @@
       </div>
 
       <div class="landing__pin">
-        <label class="landing__pin-label">
-          <input type="checkbox" id="pin-toggle" class="landing__pin-checkbox">
-          <span>Pin this room</span>
-        </label>
-        <span class="landing__pin-info" aria-label="About pinned rooms" tabindex="0">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="8" cy="8" r="7"/>
-            <line x1="8" y1="7" x2="8" y2="11"/>
-            <circle cx="8" cy="5" r="0.5" fill="currentColor" stroke="none"/>
-          </svg>
-          <span class="landing__pin-tooltip" role="tooltip">
-            Pinned rooms persist on the server and survive restarts — bookmark the link to return anytime. Optionally protect with a passphrase. Requires the server to be started with pinned rooms enabled.
-          </span>
-        </span>
-        <div id="pin-passphrase-wrap" class="landing__pin-passphrase" style="display:none">
+        <div class="landing__pin-row">
+          <div class="landing__pin-meta">
+            <span class="landing__pin-title">Pin this room</span>
+            <span class="landing__pin-desc">Persist on the server &amp; survive restarts. Bookmark the link to return anytime.</span>
+          </div>
+          <label class="landing__pin-toggle" aria-label="Pin this room">
+            <input type="checkbox" id="pin-toggle" class="landing__pin-checkbox">
+            <span class="landing__pin-switch"></span>
+          </label>
+        </div>
+        <div id="pin-passphrase-wrap" class="landing__pin-passphrase">
           <input id="pin-passphrase" class="input input--sm" type="password" placeholder="Passphrase (optional)">
         </div>
       </div>
@@ -92,7 +88,7 @@
 
     <div class="room__header">
       <div class="room__header-left">
-        <span class="room__logo">Beam</span>
+        <a href="/" class="room__logo">Beam</a>
         <span id="header-room-code" class="room__code"></span>
         <span id="header-devices" class="room__devices"></span>
       </div>
