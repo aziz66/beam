@@ -10,6 +10,8 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  &nbsp;
+  <a href="https://github.com/aziz66/beam/pkgs/container/beam"><img src="https://img.shields.io/badge/docker-ghcr.io%2Faziz66%2Fbeam-blue?logo=docker" alt="Docker"></a>
 </p>
 
 ---
