@@ -209,14 +209,7 @@ button, input, [contenteditable] {
   gap: 1.5rem;
   height: 100dvh;
   position: relative;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-.landing::-webkit-scrollbar {
-  display: none;
+  overflow: hidden;
 }
 
 .landing__logo {
@@ -1436,8 +1429,8 @@ button, input, [contenteditable] {
 
 @media (max-height: 820px) {
   .landing {
-    gap: 1.125rem;
-    padding: 1.5rem 2rem;
+    gap: 1rem;
+    padding: 1.25rem 2rem;
   }
 
   .landing__logo {
@@ -1448,24 +1441,22 @@ button, input, [contenteditable] {
     font-size: 1rem;
   }
 
+  .landing__actions {
+    gap: 1rem;
+  }
+
   .landing__qr {
-    padding: 1.5rem;
+    padding: 1.25rem 1.5rem;
     gap: 0.75rem;
   }
 
   .landing__qr canvas {
-    width: 150px !important;
-    height: 150px !important;
+    width: 140px !important;
+    height: 140px !important;
   }
 
-  .landing__feature {
-    padding: 0.75rem 0.625rem;
-    gap: 0.375rem;
-  }
-
-  .landing__feature-icon {
-    width: 40px;
-    height: 40px;
+  .landing__features {
+    display: none;
   }
 }
 
