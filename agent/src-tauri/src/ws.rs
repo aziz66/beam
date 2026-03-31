@@ -17,6 +17,8 @@ use xsalsa20poly1305::{
     Key, Nonce, XSalsa20Poly1305,
 };
 
+use tauri::Manager;
+
 use crate::room::RoomConfig;
 
 pub async fn run_ws(
@@ -128,6 +130,20 @@ pub async fn run_ws(
                     match msg {
                         Some(Ok(Message::Text(text))) => {
                             if let Ok(val) = serde_json::from_str::<Value>(&text) {
+                                if val["type"] == "error"
+                                    && val["payload"]["code"] == "auth_required"
+                                {
+                                    // Room requires a passphrase we don't have — stop retrying
+                                    // and surface the settings window so the user can provide it.
+                                    connected.store(false, Ordering::SeqCst);
+                                    crate::tray::set_status(&app, false);
+                                    if let Some(window) = app.get_window("settings") {
+                                        let _ = window.show();
+                                        let _ = window.set_focus();
+                                    }
+                                    let _ = app.emit_all("auth-required", ());
+                                    return; // stop the retry loop entirely
+                                }
                                 if val["type"] == "item" {
                                     let payload = &val["payload"];
                                     if payload["kind"] == "text" {

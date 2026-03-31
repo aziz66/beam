@@ -44,6 +44,10 @@ window.addEventListener('load', () => {
     }
   })
 
+  // Server rejected connection — passphrase required
+  window.__TAURI__.event.listen('auth-required', () => {
+    setStatus(false, 'Passphrase required — enter it below and reconnect')
+  })
 })
 
 connectBtn.addEventListener('click', () => {

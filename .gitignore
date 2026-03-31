@@ -3,6 +3,11 @@
 /beam.exe
 /beam-cli
 /beam-cli.exe
+/cli.exe
+
+# Claude Code local config (local dev only)
+CLAUDE.md
+.claude/
 
 # Build output
 dist/
