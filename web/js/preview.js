@@ -61,10 +61,12 @@ export function renderTextContent(text, maxLength = 500) {
 }
 
 export function renderLinkPreview(url) {
-  // Defense in depth: only render http(s) URLs even though detectContentKind
-  // already filters non-http URLs. Guards against future callers that bypass detection.
+  // Normalize bare domains (e.g. "google.com" → "https://google.com") before
+  // URL validation. Defense in depth: only render http(s) URLs even though
+  // detectContentKind already filters non-http URLs.
+  const normalized = /^https?:\/\//i.test(url) ? url : 'https://' + url
   try {
-    const u = new URL(url)
+    const u = new URL(normalized)
     if (u.protocol !== 'http:' && u.protocol !== 'https:') {
       return document.createElement('div')
     }
@@ -73,7 +75,7 @@ export function renderLinkPreview(url) {
   }
 
   const el = document.createElement('div')
-  el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="item__content--link">${escapeHtml(url)}</a>`
+  el.innerHTML = `<a href="${escapeHtml(normalized)}" target="_blank" rel="noopener noreferrer" class="item__content--link">${escapeHtml(normalized)}</a>`
 
   // AbortController so the fetch can be cancelled when the item is pruned or times out
   const controller = new AbortController()
@@ -81,7 +83,7 @@ export function renderLinkPreview(url) {
   el._abortFetch = () => { clearTimeout(timeoutId); controller.abort() }
 
   // Try to fetch OG preview
-  fetch(`/api/preview?url=${encodeURIComponent(url)}`, { signal: controller.signal })
+  fetch(`/api/preview?url=${encodeURIComponent(normalized)}`, { signal: controller.signal })
     .then(r => {
       clearTimeout(timeoutId)
       if (!r.ok) return null
@@ -96,7 +98,7 @@ export function renderLinkPreview(url) {
       el.innerHTML = ''
 
       const card = document.createElement('a')
-      card.href = url
+      card.href = normalized
       card.target = '_blank'
       card.rel = 'noopener noreferrer'
       card.className = 'link-preview'
@@ -128,7 +130,7 @@ export function renderLinkPreview(url) {
 
       const domain = document.createElement('div')
       domain.className = 'link-preview__domain'
-      try { domain.textContent = new URL(url).hostname } catch { domain.textContent = url }
+      try { domain.textContent = new URL(normalized).hostname } catch { domain.textContent = normalized }
       body.appendChild(domain)
 
       card.appendChild(body)

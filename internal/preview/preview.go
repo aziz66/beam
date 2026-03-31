@@ -136,8 +136,9 @@ func (p *Previewer) Fetch(rawURL string) (*Result, error) {
 		call.err = err
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "BeamBot/1.0 (link preview)")
-	req.Header.Set("Accept", "text/html")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; BeamPreview/1.0)")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
 
 	resp, err := p.client.Do(req)
 	if err != nil {

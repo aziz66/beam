@@ -1,6 +1,6 @@
 import { Transport } from './transport.js'
 import { generateKey, encrypt, decryptToString } from './crypto.js'
-import { detectContentKind, setupClipboardHandler, copyToClipboard } from './clipboard.js'
+import { detectContentKind, setupClipboardHandler, copyToClipboard, normalizeUrl } from './clipboard.js'
 import { getDeviceLabel } from './device.js'
 import { renderItem, showNotification, updateDeviceList, updateStatusBar, setupDragDrop, completeFileTransfer } from './ui.js'
 import { sendFile, handleFileMeta, handleFileChunk, handleFileComplete } from './stream.js'
@@ -208,10 +208,11 @@ function setupTransport() {
       // claimed kind field, which could be used to force a javascript: URL through
       // renderLinkPreview by claiming kind='link' for malicious text.
       const kind = detectContentKind(text)
+      const displayText = kind === 'link' ? normalizeUrl(text) : text
       renderItem({
         item_id: payload.item_id,
         kind,
-        text,
+        text: displayText,
         device_label: payload.device_label,
         ts: env.ts
       })
@@ -275,7 +276,8 @@ function sendTextItem(text) {
   if (!text.trim() || state !== 'CONNECTED') return
 
   const kind = detectContentKind(text)
-  const { encrypted, nonce } = encrypt(text, encryptionKey)
+  const normalizedText = kind === 'link' ? normalizeUrl(text.trim()) : text
+  const { encrypted, nonce } = encrypt(normalizedText, encryptionKey)
   const itemId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : generateSecureId()
 
   const envelope = {
@@ -298,7 +300,7 @@ function sendTextItem(text) {
   renderItem({
     item_id: itemId,
     kind,
-    text,
+    text: normalizedText,
     device_label: deviceLabel + ' (you)',
     is_mine: true,
     ts: Date.now()

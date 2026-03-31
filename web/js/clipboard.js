@@ -9,10 +9,31 @@ function isHttpUrl(text) {
   }
 }
 
+// Detect bare domains like "google.com" or "www.google.com/path"
+function looksLikeBareUrl(text) {
+  if (text.includes(' ') || text.length < 4) return false
+  if (/^[a-z]+:\/\//i.test(text)) return false // already has scheme
+  try {
+    const u = new URL('https://' + text)
+    // Require a dot in the hostname and a recognisable alpha TLD
+    return /\.([a-zA-Z]{2,})$/.test(u.hostname)
+  } catch {
+    return false
+  }
+}
+
+// Prepend https:// to bare domains; leave fully-qualified URLs untouched.
+export function normalizeUrl(text) {
+  const trimmed = text.trim()
+  if (isHttpUrl(trimmed)) return trimmed
+  if (looksLikeBareUrl(trimmed)) return 'https://' + trimmed
+  return trimmed
+}
+
 export function detectContentKind(text) {
   if (!text) return 'text'
   const trimmed = text.trim()
-  if (isHttpUrl(trimmed)) return 'link'
+  if (isHttpUrl(trimmed) || looksLikeBareUrl(trimmed)) return 'link'
   if (CODE_HINTS.test(trimmed) && trimmed.includes('\n')) return 'code'
   return 'text'
 }
