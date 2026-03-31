@@ -296,7 +296,12 @@ func (h *Hub) readPump(conn *websocket.Conn, client *room.Client, rm *room.Room)
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
+			if websocket.IsUnexpectedCloseError(err,
+				websocket.CloseGoingAway,
+				websocket.CloseNormalClosure,
+				websocket.CloseNoStatusReceived,
+				websocket.CloseAbnormalClosure,
+			) {
 				log.Printf("read error: device=%s: %v", client.DeviceID, err)
 			}
 			return
