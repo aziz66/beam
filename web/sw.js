@@ -1,4 +1,4 @@
-const CACHE_NAME = 'beam-v35'
+const CACHE_NAME = 'beam-v36'
 const SHELL_ASSETS = [
   '/',
   '/css/style.css',
@@ -16,6 +16,9 @@ const SHELL_ASSETS = [
   '/lib/tweetnacl-util.min.js',
   '/lib/qrcode.min.js',
   '/favicon.svg',
+  '/favicon.ico',
+  '/favicon-96x96.png',
+  '/apple-touch-icon.png',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png'
