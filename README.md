@@ -4,10 +4,15 @@
 
 No install on the receiving end. No accounts. No persistence by default. The server is a blind relay that only ever sees encrypted blobs.
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Docker](https://img.shields.io/badge/docker-ghcr.io%2Faziz66%2Fbeam-blue?logo=docker)](https://github.com/aziz66/beam/pkgs/container/beam)
+
+---
+
 ## Why Beam?
 
 - **Zero install** — the receiver just opens a browser tab
-- **Zero trust** — E2E encrypted, the server never sees your data
+- **Zero knowledge** — E2E encrypted; the server never sees your data
 - **Zero accounts** — no sign-up, no login, no tracking
 - **Single binary** — one command to self-host
 
@@ -21,8 +26,9 @@ docker run -p 8080:8080 ghcr.io/aziz66/beam
 
 ### Binary
 
+Download the latest release from [GitHub Releases](https://github.com/aziz66/beam/releases), then:
+
 ```bash
-# Download from Releases, then:
 ./beam --port 8080
 ```
 
@@ -37,6 +43,8 @@ go build -ldflags "-s -w" -o beam .
 
 Open `http://localhost:8080` — you get a room with a QR code and shareable link. Open that link on any other device to start sharing instantly.
 
+---
+
 ## How It Works
 
 1. Visit the server — a room is created with a unique code like `coral-tiger-88`
@@ -50,19 +58,23 @@ https://your-server.com/r/coral-tiger-88#E2EKeyHere
                          └── sent to server  └── never sent to server
 ```
 
+---
+
 ## Features
 
 - **Text & clipboard** — paste text, links, code snippets; auto-detects content kind
 - **File streaming** — drag-and-drop or attach files, streamed in 64 KB encrypted chunks with live progress
 - **Feed filters** — filter the shared feed by type: Text, Links, Code, Media, Files
 - **Link previews** — OG tag extraction for shared URLs
-- **Tap to copy / download** — tap any text/code bubble to copy; tap any file/image to download
-- **P2P upgrade** — WebRTC direct connection for 2-device rooms on LAN
+- **Tap to copy / download** — tap any text/code bubble to copy; tap any file to download
+- **P2P upgrade** — WebRTC direct connection for 2-device rooms on the same network
 - **Pinned rooms** — persistent rooms with optional passphrase protection (bcrypt)
 - **PWA** — installable on mobile, share-target support on Android/iOS
 - **CLI client** — `beam send`, `beam receive`, `beam new`
 - **Desktop agent** — Tauri tray app for clipboard auto-sync
 - **Dark/light theme** — follows system preference
+
+---
 
 ## Configuration
 
@@ -82,9 +94,11 @@ All settings can be set via flags or `BEAM_*` environment variables.
 | `--grace-period` | `BEAM_GRACE_PERIOD` | `5m` | Room grace period after last disconnect |
 | `--max-rooms` | `BEAM_MAX_ROOMS` | `1000` | Max concurrent rooms |
 
+---
+
 ## Self-Hosting
 
-> **TLS is required for production.** The encryption key lives in the URL fragment — over plain HTTP it is visible in browser history and to any network observer. Use HTTPS.
+> **TLS is required for production.** The encryption key lives in the URL fragment — over plain HTTP it is visible in browser history and to network observers. Always use HTTPS.
 
 ### Direct TLS
 
@@ -139,6 +153,49 @@ volumes:
   beam-data:
 ```
 
+---
+
+## CLI
+
+Build the CLI:
+
+```bash
+go build -o beam-cli ./cli/
+```
+
+Usage:
+
+```bash
+# Create a new room
+beam-cli new --server https://beam.example.com
+
+# Send a file
+beam-cli send ./report.pdf --room coral-tiger-88 --key <base64key>
+
+# Send text from stdin
+echo "hello world" | beam-cli send --room coral-tiger-88 --key <base64key>
+
+# Receive (watch room, download files)
+beam-cli receive --room coral-tiger-88 --key <base64key>
+```
+
+---
+
+## Desktop Agent
+
+The desktop agent is a system tray app (Tauri/Rust) that stays connected to a room and automatically syncs your clipboard.
+
+**Requirements:** Rust + Cargo + [Tauri prerequisites](https://tauri.app/start/prerequisites/)
+
+```bash
+cd agent
+cargo tauri build
+```
+
+The built installer is in `agent/src-tauri/target/release/bundle/`.
+
+---
+
 ## API
 
 ```bash
@@ -169,23 +226,7 @@ curl -X POST http://localhost:8080/api/rooms/coral-tiger-88/items \
 curl "http://localhost:8080/api/preview?url=https://example.com"
 ```
 
-## CLI
-
-```bash
-# Create a new room
-beam new --server http://localhost:8080
-
-# Send a file
-beam send ./report.pdf --room coral-tiger-88 --key <base64key>
-
-# Send text from stdin
-echo "hello world" | beam send --room coral-tiger-88 --key <base64key>
-
-# Receive (watch room, download files)
-beam receive --room coral-tiger-88 --key <base64key>
-```
-
-Build the CLI: `go build -o beam-cli ./cli/`
+---
 
 ## Security
 
@@ -198,6 +239,8 @@ Build the CLI: `go build -o beam-cli ./cli/`
 - **WebSocket rate limiting** — token bucket (30 msg/s, burst 60) per connection
 - **CORS enforcement** — WebSocket connections restricted to same-origin host
 - **Non-root container** — Docker image runs as a dedicated `beam` user
+
+---
 
 ## Architecture
 
@@ -221,6 +264,18 @@ beam/
 ├── cli/                     # CLI client
 └── agent/                   # Desktop tray agent (Tauri/Rust)
 ```
+
+---
+
+## Contributing
+
+Pull requests are welcome. For significant changes, open an issue first to discuss what you'd like to change.
+
+- Follow the existing code style (see comments in source)
+- Keep commits conventional: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`
+- Run `go test ./... -race` before submitting
+
+---
 
 ## License
 
