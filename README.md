@@ -246,6 +246,7 @@ curl "http://localhost:8080/api/preview?url=https://example.com"
 - **Blind relay** — the server only sees encrypted blobs, room codes, and device IDs
 - **Passphrase hashing** — pinned room passphrases stored as bcrypt (cost 12)
 - **SSRF protection** — link preview endpoint blocks private IP ranges and redirect chains to private IPs
+- **Subresource Integrity** — SHA-384 hashes on all JS assets; browser refuses to execute tampered scripts
 - **Security headers** — CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy on all responses
 - **WebSocket rate limiting** — token bucket (30 msg/s, burst 60) per connection
 - **CORS enforcement** — WebSocket connections restricted to same-origin host
