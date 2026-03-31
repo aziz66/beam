@@ -1,0 +1,77 @@
+name: Bug Report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill out the details below so we can reproduce and fix it.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+      placeholder: e.g. File transfer stalls at 50% and never completes
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a room with two devices
+        2. Drag a file over 10MB
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: The file should transfer and be available for download.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How are you running Beam?
+      options:
+        - Docker
+        - Binary (self-hosted)
+        - Built from source
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: e.g. v1.0.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser (if frontend issue)
+      options:
+        - Chrome / Chromium
+        - Firefox
+        - Safari
+        - Edge
+        - Other / Not applicable
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste any server logs or browser console errors here.
+      render: shell
+    validations:
+      required: false
