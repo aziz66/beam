@@ -40,6 +40,10 @@ test:
 vet:
 	go vet ./...
 
+# Update SRI hashes after editing any JS file
+sri:
+	bash scripts/update-sri.sh
+
 # Agent (Tauri)
 agent:
 	cd agent && cargo tauri build
