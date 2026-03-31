@@ -583,11 +583,23 @@ function renderQR(text, targetCanvas) {
   }
 }
 
-// Load vendored scripts then init
+// SRI hashes for dynamically loaded vendored scripts
+const LIB_INTEGRITY = {
+  '/lib/tweetnacl.min.js':      'sha384-05+sicyRJQ56XpL4U9HJ8YbtSzFDvAg7apPKOGV6A0JsAJKFM68jp5oLnUjG5mEp',
+  '/lib/tweetnacl-util.min.js': 'sha384-qpU3wxGxaAPcz02pOLeZTv5B0rNzsh3CETsUqdHxRBP70bO0kHoBopr+f9AcGj04',
+  '/lib/qrcode.min.js':         'sha384-8FWZA6BGMXhsfO+BLtrJK0We6gg5o1JyO8xQm6peWDEUs17ACA5ziE/NIAkl9z2k',
+}
+
+// Load vendored scripts with SRI integrity checks
 function loadScript(src) {
   return new Promise((resolve, reject) => {
     const s = document.createElement('script')
     s.src = src
+    const integrity = LIB_INTEGRITY[src]
+    if (integrity) {
+      s.integrity = integrity
+      s.crossOrigin = 'anonymous'
+    }
     s.onload = resolve
     s.onerror = reject
     document.head.appendChild(s)
