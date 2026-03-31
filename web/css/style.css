@@ -204,7 +204,7 @@ button, input, [contenteditable] {
 
 .landing {
   align-items: center;
-  justify-content: center;
+  justify-content: safe center;
   padding: 2rem;
   gap: 1.5rem;
   height: 100dvh;
@@ -363,62 +363,50 @@ button, input, [contenteditable] {
 }
 
 /* ========================================
-   Feature Highlights
+   Feature Highlights — compact inline pills
    ======================================== */
 
 .landing__features {
   display: flex;
-  flex-direction: row;
-  gap: 1rem;
-  width: 100%;
-  max-width: 460px;
+  align-items: center;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+  justify-content: center;
   animation: fade-up 600ms var(--transition) 350ms both;
 }
 
 .landing__feature {
-  flex: 1;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
-  padding: 1rem 0.75rem;
-  border-radius: var(--radius-lg);
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
   background: var(--bg-card);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--glass-border);
-  transition: all var(--transition);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  transition: border-color var(--transition), color var(--transition);
 }
 
-.landing__feature:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow);
-  border-color: var(--border);
-}
-
-.landing__feature-icon {
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 14px;
-  background: var(--accent-light);
+.landing__feature svg {
+  flex-shrink: 0;
   color: var(--accent);
 }
 
-.landing__feature-icon svg {
-  width: 22px;
-  height: 22px;
-  stroke-width: 2;
+.landing__feature:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
 }
 
-.landing__feature-text {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-align: center;
-  letter-spacing: 0.01em;
+.landing__feature-sep {
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  opacity: 0.5;
+  user-select: none;
 }
 
 /* ========================================
@@ -1298,20 +1286,6 @@ button, input, [contenteditable] {
     gap: 0.625rem;
   }
 
-  .landing__feature {
-    padding: 0.75rem 0.5rem;
-  }
-
-  .landing__feature-icon {
-    font-size: 1.25rem;
-    width: 38px;
-    height: 38px;
-  }
-
-  .landing__feature-text {
-    font-size: 0.7rem;
-  }
-
   .room__header {
     padding: 0.5rem 0.75rem;
   }
@@ -1455,17 +1429,13 @@ button, input, [contenteditable] {
     height: 140px !important;
   }
 
-  .landing__features {
-    display: none;
-  }
 }
 
 @media (max-height: 700px) {
   .landing {
     gap: 0.875rem;
     padding: 1.25rem 1.75rem;
-    justify-content: flex-start;
-    padding-top: 2.5rem;
+    justify-content: safe center;
   }
 
   .landing__logo {
@@ -1487,27 +1457,8 @@ button, input, [contenteditable] {
   }
 
   .landing__qr canvas {
-    width: 130px !important;
-    height: 130px !important;
-  }
-
-  .landing__features {
-    gap: 0.5rem;
-  }
-
-  .landing__feature {
-    padding: 0.625rem 0.5rem;
-    gap: 0.25rem;
-  }
-
-  .landing__feature-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-  }
-
-  .landing__feature-text {
-    font-size: 0.72rem;
+    width: 120px !important;
+    height: 120px !important;
   }
 }
 
