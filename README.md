@@ -1,24 +1,33 @@
-# Beam
+<p align="center">
+  <img src="docs/logo.png" alt="Beam" width="220">
+</p>
 
-**Encrypted ephemeral sharing between any devices.**
+<h3 align="center">Encrypted ephemeral sharing between any devices.</h3>
 
-No install on the receiving end. No accounts. No persistence by default. The server is a blind relay that only ever sees encrypted blobs.
+<p align="center">
+  No install on the receiving end &nbsp;·&nbsp; No accounts &nbsp;·&nbsp; No persistence by default
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Docker](https://img.shields.io/badge/docker-ghcr.io%2Faziz66%2Fbeam-blue?logo=docker)](https://github.com/aziz66/beam/pkgs/container/beam)
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+</p>
 
 ---
 
 ## Why Beam?
 
-- **Zero install** — the receiver just opens a browser tab
-- **Zero knowledge** — E2E encrypted; the server never sees your data
-- **Zero accounts** — no sign-up, no login, no tracking
-- **Single binary** — one command to self-host
+| | |
+|---|---|
+| **Zero install** | The receiver just opens a browser tab — no app, no extension |
+| **Zero knowledge** | E2E encrypted; the server only ever sees encrypted blobs |
+| **Zero accounts** | No sign-up, no login, no tracking |
+| **Single binary** | One command to self-host — Go binary embeds everything |
+
+---
 
 ## Quick Start
 
-### Docker (recommended)
+### Docker
 
 ```bash
 docker run -p 8080:8080 ghcr.io/aziz66/beam
