@@ -28,6 +28,18 @@ Areas of particular interest:
 - Passphrase handling for pinned rooms (`internal/room/`)
 - Content Security Policy and security headers (`main.go`)
 
+## Known Limitations
+
+**Trust in the Host:** Even with end-to-end encryption, you are trusting the server to deliver the correct frontend code. A compromised server could theoretically serve a malicious JavaScript payload designed to steal the keys. This is a fundamental limitation of web-based E2E encryption, not a flaw unique to Beam.
+
+Mitigations in place:
+- `script-src 'self'` CSP blocks all external script injection
+- `connect-src 'self'` CSP prevents exfiltration of keys to external domains, even if malicious JS were executed
+- The frontend is embedded directly in the server binary (`go:embed`) — an attacker must replace the binary itself, not just a file on disk
+- The server is fully open source — anyone can audit the code and verify what the binary serves
+
+For the highest level of trust, self-host Beam by building from source and auditing the code yourself.
+
 ## Disclosure Policy
 
 Once a fix is ready and released, we will publish a security advisory crediting the reporter (unless they prefer to remain anonymous).
